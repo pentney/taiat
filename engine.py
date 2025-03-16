@@ -1,21 +1,26 @@
 from typing import Callable
 
-from langchain_core.chat_models import BaseChatModel
+from langchain_core.language_models.chat_models import BaseChatModel
+from langgraph.graph import StateGraph
 
-from taiat.taiat.taiat_builder import AgentGraph
-from taiat.taiat.query import TaiatQuery
+from taiat.builder import AgentData, TaiatQuery
+
 
 class TaiatEngine:
     def __init__(
             self,
             llm_dict: dict[str, BaseChatModel],
-            graph: AgentGraph,
+            graph: StateGraph,
             output_matcher: Callable[[str], str]):
         self.llms = llm_dict
         self.graph = graph
         self.output_matcher = output_matcher
 
-def run(self, query: TaiatQuery) -> TaiatQuery:
+    def run(
+          self,
+          query: TaiatQuery,
+          data: dict[str, AgentData],
+          ) -> TaiatQuery:
         goal_output = self.output_matcher(query.query)
         query.inferred_goal_output = goal_output
         if goal_output:
@@ -45,6 +50,8 @@ def run(self, query: TaiatQuery) -> TaiatQuery:
                                    return query
                               needed_outputs.append(needed_output)
             path = self.graph.get_plan(needed_outputs)
+            state = State(query=query, data=data)
+            state = self.graph.graph.invoke(path, querystate)
             query = self.graph.execute_plan(path, query)
         else:
             query.status = "error"
