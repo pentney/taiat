@@ -1,11 +1,23 @@
+import os
+import getpass
 from typing_extensions import TypedDict
 from typing import Annotated, Any, Callable
 
 from IPython.display import Image, display
-
 from pydantic import BaseModel
+
+from langchain_anthropic import ChatAnthropic
+from langchain_core.chat_models import BaseChatModel
 from langgraph.graph import StateGraph, GraphNode, START, END
 from langgraph.graph.message import add_messages
+
+
+# def _set_env(var: str):
+#     if not os.environ.get(var):
+#         os.environ[var] = getpass.getpass(f"{var}: ")
+# _set_env("ANTHROPIC_API_KEY")
+
+# llm = ChatAnthropic(model="claude-3-5-sonnet-latest")
 
 class AgentData(BaseModel):
     name: str
@@ -20,8 +32,15 @@ class AgentGraphNode(BaseModel):
 class AgentGraph(BaseModel):
     nodes: dict[str, "AgentGraph"]
 
-class Agentinator:
-    def __init__(self, llm: ChatAnthropic):
+    def get_plan(self, needed_outputs: list[str]) -> list[AgentGraphNode]:
+        pass
+
+    def execute_plan(self, plan: list[AgentGraphNode], query: TaiatQuery) -> TaiatQuery:
+        pass
+
+
+class TaiatBuilder:
+    def __init__(self, llm: BaseChatModel):
         self.llm = llm
         self.graph = None
         self.data_source = None
@@ -37,9 +56,7 @@ class Agentinator:
                 self.data_source[output.name].append(dest)
                 if output.name not in self.data_dependence:
                     self.data_dependence[output.name] = []
-                for input in dest.inputs:
-                    self.data_dependence[output.name].append(input)
-
+                self.data_dependence[output.name].extend(dest.inputs)
             graph_builder.add_node(dest)
             graph_builder.add_edge(top_node, dest)
             for node in subgraph:
