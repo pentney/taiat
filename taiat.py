@@ -1,6 +1,8 @@
 from typing_extensions import TypedDict
 from typing import Annotated, Any, Callable
 
+from IPython.display import Image, display
+
 from pydantic import BaseModel
 from langgraph.graph import StateGraph, GraphNode, START, END
 from langgraph.graph.message import add_messages
@@ -32,5 +34,8 @@ class Agentinator:
             for node in subgraph:
                 self.build(graph_builder, node, dest)
         self.graph = graph_builder.compile()
+
+    def visualize(self) -> Image:
+        return Image(self.graph.get_graph().draw_mermaid_png())
 
 
