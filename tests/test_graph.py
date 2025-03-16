@@ -4,7 +4,7 @@ import pandas as pd
 from langchain_core.language_models.fake_chat_models import FakeChatModel
 
 from taiat.engine import TaiatEngine
-from taiat.builder import AgentData, TaiatBuilder, TaiatQuery
+from taiat.builder import AgentData, TaiatBuilder, TaiatQuery, TAIAT_TERMINAL_NODE
 from test_agents import TestNodeSet, TestState
 
 class DummyModel(FakeChatModel):
@@ -31,7 +31,8 @@ class TestGraph(unittest.TestCase):
         assert graph is not None
         nodes = graph.get_graph().nodes
         print("nodes", nodes)
-        expected_nodes = ["__start__", "dea_analysis", "cex_analysis", "ppi_analysis", "tde_analysis", "td_summary", "__end__"]
+        expected_nodes = ["__start__", "dea_analysis", "cex_analysis", "ppi_analysis",
+                          "tde_analysis", "td_summary", TAIAT_TERMINAL_NODE, "__end__"]
         assert len(nodes) == len(expected_nodes)
         print(nodes)
         for node in nodes.keys():
@@ -47,7 +48,8 @@ class TestGraph(unittest.TestCase):
             ("ppi_analysis", "tde_analysis"),
             ("cex_analysis", "tde_analysis"),
             ("tde_analysis", "td_summary"),
-            ("td_summary", "__end__"),
+            ("td_summary", TAIAT_TERMINAL_NODE),
+            (TAIAT_TERMINAL_NODE, "__end__"),
         ]
         for edge in edges:
             print(edge.source, edge.target)

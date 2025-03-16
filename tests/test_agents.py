@@ -11,27 +11,32 @@ class TestState(State):
         })}
 
 def cex_analysis(state: TestState) -> TestState:
+    print("cex_analysis", state)
     state["cex_data"] = state["dataset"].copy()
     state["cex_data"]["cex"] = 1.0
     return state
 
 def ppi_analysis(state: TestState) -> TestState:
+    print("ppi_analysis", state)
     state["ppi_data"] = state["dataset"].copy()
     state["ppi_data"]["ppi"] = 2.0
     return state
 
 def dea_analysis(state: TestState) -> TestState:
+    print("dea_analysis", state)
     state["dea_data"] = state["dataset"].copy()
     state["dea_data"]["dea"] = 0.0
     return state
 
 def tde_analysis(state: TestState) -> TestState:
+    print("tde_analysis", state)
     state["tde_data"] = state["cex_data"].copy()
     state["tde_data"].join(state["ppi_data"], on="id", how="inner")
     state["tde_data"]["score"] = state["tde_data"]["cex"] + state["tde_data"]["ppi"]
     return state
 
 def td_summary(state: TestState) -> TestState:
+    print("td_summary", state)
     state["td_summary"] = f"summary of TD. sum: {state['tde_data']['score'].sum()}"
     return state
 

@@ -31,9 +31,6 @@ class AgentGraphNode(BaseModel):
 class AgentGraphNodeSet(BaseModel):
     nodes: list[AgentGraphNode]
 
-    def get_plan(self, needed_outputs: list[str]) -> list[AgentGraphNode]:
-        pass
-
 class TaiatQuery(BaseModel):
     query: str
     inferred_goal_output: Optional[str] = None
@@ -61,6 +58,10 @@ class State(TypedDict):
     query: TaiatQuery
     data: dict[str, AgentData]
 
+TAIAT_TERMINAL_NODE = "__terminal__"
+def taiat_terminal_node(state: State) -> State:
+    return state
+
 class TaiatBuilder:
     def __init__(self, llm: BaseChatModel):
         self.llm = llm
@@ -76,6 +77,8 @@ class TaiatBuilder:
             terminal_nodes: list[str],
         ) -> StateGraph:
         self.graph_builder = StateGraph(State)
+        self.graph_builder.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
+        self.graph_builder.add_edge(TAIAT_TERMINAL_NODE, END)
         for node in node_set.nodes:
             no_deps = True
             for output in node.outputs:
@@ -90,7 +93,7 @@ class TaiatBuilder:
             self.graph_builder.add_node(node.name, node.function)
             if node.name in terminal_nodes:
                 print(f"adding edge {node.name} -> END")
-                self.graph_builder.add_edge(node.name, END)
+                self.graph_builder.add_edge(node.name, TAIAT_TERMINAL_NODE)
             if no_deps:
                 print(f"adding edge START -> {node.name}")
                 self.graph_builder.add_edge(START, node.name)
@@ -111,7 +114,10 @@ class TaiatBuilder:
         print(f"graph_builder: {self.graph_builder}")
         self.graph = self.graph_builder.compile()
         return self.graph
-    
+
+    def get_plan(self, needed_outputs: list[str]) -> list[AgentGraphNode]:
+        pass
+
     def visualize(self) -> Image:
         return Image(self.graph.get_graph().draw_mermaid_png())
 
