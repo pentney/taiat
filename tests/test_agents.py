@@ -1,43 +1,37 @@
 import pandas as pd
 from typing import Any, Optional
-
+from pydantic import BaseModel
 from taiat.builder import AgentData, AgentGraphNode, AgentGraphNodeSet, State, TaiatQuery
 
-class TestState(State):
-    def __init__(self):
-        self.query = TaiatQuery()
-        self.input = {"dataset":pd.DataFrame({
-            "id": [1, 2, 3]
-        })}
 
-def cex_analysis(state: TestState) -> TestState:
-    print("cex_analysis", state)
+def cex_analysis(state: State) -> State:
     state["data"]["cex_data"] = state["data"]["dataset"].copy()
     state["data"]["cex_data"]["cex"] = 1.0
     return state
+    return state
 
-def ppi_analysis(state: TestState) -> TestState:
-    print("ppi_analysis", state)
+def ppi_analysis(state: State) -> State:
     state["data"]["ppi_data"] = state["data"]["dataset"].copy()
     state["data"]["ppi_data"]["ppi"] = 2.0
     return state
 
-def dea_analysis(state: TestState) -> TestState:
-    print("dea_analysis", state)
+def dea_analysis(state: State) -> State:
     state["data"]["dea_data"] = state["data"]["dataset"].copy()
     state["data"]["dea_data"]["dea"] = 0.0
     return state
 
-def tde_analysis(state: TestState) -> TestState:
-    print("tde_analysis", state)
+def tde_analysis(state: State) -> State:
     state["data"]["tde_data"] = state["data"]["cex_data"].copy()
-    state["data"]["tde_data"].join(state["data"]["ppi_data"], on="id", how="inner")
-    state["data"]["tde_data"]["score"] = state["data"]["tde_data"]["cex"] + state["data"]["tde_data"]["ppi"]
+    state["data"]["tde_data"] = pd.merge(
+        state["data"]["tde_data"], state["data"]["ppi_data"], on="id", how="left"
+    )
+    state["data"]["tde_data"]["score"] = \
+        state["data"]["tde_data"]["cex"] + state["data"]["tde_data"]["ppi"]
     return state
 
-def td_summary(state: TestState) -> TestState:
-    print("td_summary", state)
-    state["data"]["td_summary"] = f"summary of TD. sum: {state['data']['tde_data']['score'].sum()}"
+def td_summary(state: State) -> State:
+    state["data"]["td_summary"] = \
+        f"summary of TD. sum: {state['data']['tde_data']['score'].sum()}"
     return state
 
 TestNodeSet = AgentGraphNodeSet(

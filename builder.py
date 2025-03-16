@@ -1,10 +1,11 @@
 import os
+import operator
 import getpass
 from typing_extensions import TypedDict
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Annotated
 from collections import defaultdict
 from IPython.display import Image, display
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, Field
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -21,9 +22,10 @@ class AgentData(BaseModel):
     name: str
     data: Optional[Any] = None
 
-    @model_validator(mode="after")
-    def validate_data(self):
-        return self.data
+    @classmethod
+    @field_validator("data",mode="after")
+    def validate_data(cls):
+        return cls
 
 class AgentGraphNode(BaseModel):
     name: str
@@ -36,9 +38,9 @@ class AgentGraphNodeSet(BaseModel):
     nodes: list[AgentGraphNode]
 
 class TaiatQuery(BaseModel):
-    query: str
+    query: Annotated[str, operator.add]
     inferred_goal_output: Optional[str] = None
-    intermediate_data: Optional[list[str]] = None
+    intermediate_data: Annotated[list[str], operator.add] = []
     status: Optional[str] = None
     error: str = ""
     path: Optional[list[AgentGraphNode]] = None
@@ -58,9 +60,11 @@ class TaiatQuery(BaseModel):
             "path": self.path,
         }
 
+
 class State(TypedDict):
-    query: TaiatQuery
-    data: dict[str, AgentData]
+    query: Annotated[TaiatQuery, lambda x,_: x]
+    data: Annotated[dict[str, Any], operator.or_] = {}
+
 
 TAIAT_TERMINAL_NODE = "__terminal__"
 def taiat_terminal_node(state: State) -> State:
@@ -93,13 +97,10 @@ class TaiatBuilder:
                 for input in node.inputs:
                     if input.name not in state["data"]:
                         no_deps = False
-            print(f"adding node {node}")
             self.graph_builder.add_node(node.name, node.function)
             if node.name in terminal_nodes:
-                print(f"adding edge {node.name} -> END")
                 self.graph_builder.add_edge(node.name, TAIAT_TERMINAL_NODE)
             if no_deps:
-                print(f"adding edge START -> {node.name}")
                 self.graph_builder.add_edge(START, node.name)
         for input in inputs:
             self.data_dependence[input] = None
@@ -113,9 +114,7 @@ class TaiatBuilder:
                 for dep in dependence:
                     src = self.data_source[dep.name]
                     if src is not None:
-                        print(f"adding edge {src} -> {dest}")
                         self.graph_builder.add_edge(src, dest)
-        print(f"graph_builder: {self.graph_builder}")
         self.graph = self.graph_builder.compile()
         return self.graph
 
