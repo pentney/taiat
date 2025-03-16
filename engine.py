@@ -60,9 +60,8 @@ class TaiatEngine:
                               output_set.add(needed_output.name)
             print("output_set", output_set)
             path = self.builder.get_plan(output_set)
-            state = State(query=query, data=data)
-            state = self.graph.invoke(path, state)
-            query = self.builder.execute_plan(path, query)
+            state = State({"query": query, "data": data})
+            state = self.graph.invoke(state)
         else:
             query.status = "error"
             query.error = "No goal output"

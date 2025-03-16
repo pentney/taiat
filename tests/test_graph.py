@@ -69,7 +69,7 @@ class TestGraph(unittest.TestCase):
         )
         engine.run(
             query=TaiatQuery(
-                query="",
+                query="Give me a TDE summary",
             ),
             data={
                 "dataset": AgentData(name="dataset", data=pd.DataFrame()),

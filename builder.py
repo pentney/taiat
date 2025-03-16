@@ -4,7 +4,7 @@ from typing_extensions import TypedDict
 from typing import Any, Callable, Optional
 from collections import defaultdict
 from IPython.display import Image, display
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -20,6 +20,10 @@ llm = ChatAnthropic(model="claude-3-5-sonnet-latest")
 class AgentData(BaseModel):
     name: str
     data: Optional[Any] = None
+
+    @model_validator(mode="after")
+    def validate_data(self):
+        return self.data
 
 class AgentGraphNode(BaseModel):
     name: str
