@@ -24,11 +24,22 @@ class Agentinator:
     def __init__(self, llm: ChatAnthropic):
         self.llm = llm
         self.graph = None
+        self.data_source = None
+        self.data_dependence = None
 
     def build(self, graph_builder: StateGraph,
               subgraph: AgentGraph,
               top_node: GraphNode=START):
         for dest, subgraph in subgraph.nodes.items():
+            for output in dest.outputs:
+                if output.name not in self.data_source:
+                    self.data_source[output.name] = []
+                self.data_source[output.name].append(dest)
+                if output.name not in self.data_dependence:
+                    self.data_dependence[output.name] = []
+                for input in dest.inputs:
+                    self.data_dependence[output.name].append(input)
+
             graph_builder.add_node(dest)
             graph_builder.add_edge(top_node, dest)
             for node in subgraph:
