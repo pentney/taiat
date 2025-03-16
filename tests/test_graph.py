@@ -3,15 +3,15 @@ import unittest
 import pandas as pd
 from langchain_core.language_models.fake_chat_models import FakeChatModel
 
-
-from taiat.builder import AgentData, TaiatBuilder
+from taiat.engine import TaiatEngine
+from taiat.builder import AgentData, TaiatBuilder, TaiatQuery
 from test_agents import TestNodeSet, TestState
 
 class DummyModel(FakeChatModel):
     pass
 
 class TestGraph(unittest.TestCase):
-    def test_build_graph(self):
+    def _build_graph(self):
         llm = DummyModel()
         builder = TaiatBuilder(llm)
         graph = builder.build(
@@ -22,12 +22,17 @@ class TestGraph(unittest.TestCase):
             ),
             node_set=TestNodeSet,
             inputs=["dataset"],
-            terminal_nodes=["tde_analysis"],
+            terminal_nodes=["td_summary"],
         )
+        return builder, graph
+
+    def test_build_graph(self):
+        _, graph = self._build_graph()
         assert graph is not None
         nodes = graph.get_graph().nodes
-        assert len(nodes) == 6
-        expected_nodes = ["__start__", "dea_analysis", "cex_analysis", "ppi_analysis", "tde_analysis", "__end__"]
+        print("nodes", nodes)
+        expected_nodes = ["__start__", "dea_analysis", "cex_analysis", "ppi_analysis", "tde_analysis", "td_summary", "__end__"]
+        assert len(nodes) == len(expected_nodes)
         print(nodes)
         for node in nodes.keys():
             assert node in expected_nodes
@@ -41,13 +46,33 @@ class TestGraph(unittest.TestCase):
             ("dea_analysis", "ppi_analysis"),
             ("ppi_analysis", "tde_analysis"),
             ("cex_analysis", "tde_analysis"),
-            ("tde_analysis", "__end__"),
+            ("tde_analysis", "td_summary"),
+            ("td_summary", "__end__"),
         ]
         for edge in edges:
             print(edge.source, edge.target)
             assert (edge.source, edge.target) in expected_edges
             expected_edges.remove((edge.source, edge.target))
         assert len(expected_edges) == 0
+
+    def test_run_graph(self):
+        builder, graph = self._build_graph()
+        engine = TaiatEngine(
+            llm_dict={
+                "llm": DummyModel(),
+            },
+            graph=graph,
+            builder=builder,
+            output_matcher=lambda x: ["td_summary"],
+        )
+        engine.run(
+            query=TaiatQuery(
+                query="",
+            ),
+            data={
+                "dataset": AgentData(name="dataset", data=pd.DataFrame()),
+            },
+        )
 
 if __name__ == "__main__":
     unittest.main()

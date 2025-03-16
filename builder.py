@@ -36,11 +36,11 @@ class AgentGraphNodeSet(BaseModel):
 
 class TaiatQuery(BaseModel):
     query: str
-    inferred_goal_output: str
-    intermediate_data: list[str]
-    status: str
-    error: str
-    path: list[AgentGraphNode]
+    inferred_goal_output: Optional[str] = None
+    intermediate_data: Optional[list[str]] = None
+    status: Optional[str] = None
+    error: str = ""
+    path: Optional[list[AgentGraphNode]] = None
 
     @classmethod
     def from_db_dict(db_dict: dict) -> "TaiatQuery":
