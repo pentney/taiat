@@ -8,7 +8,8 @@ class TaiatService(BaseModel):
     db: Database = Field(default_factory=Database)
 
     def handle_query(self, query: TaiatQuery) -> TaiatQuery:
-        db.add_row(query)
+        self.db.add_row(query)
         self.engine.run(query)
-        db.update_row(query)
+        self.db.update_row(query)
         return query
+

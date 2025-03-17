@@ -5,7 +5,8 @@ from typing import Callable, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import StateGraph
 
-from taiat.builder import AgentData, TaiatQuery, TaiatBuilder, State
+from taiat.base import TaiatQuery, State
+from taiat.builder import TaiatBuilder
 
 
 class TaiatEngine:
