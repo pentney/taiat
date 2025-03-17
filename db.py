@@ -4,6 +4,7 @@ from sqlalchemy import (
     Table,
     Column,
     DateTime,
+    Integer,
     BigInteger,
     String,
     MetaData,
@@ -37,22 +38,23 @@ metadata = MetaData()
 taiat_query_table = Table(
     'taiat_query',
     metadata,
-    Column('id', BigInteger, primary_key=True),
+    Column('id', Integer, primary_key=True, autoincrement=True),
     Column('query', String),
     Column('inferred_goal_output', String),
     Column('intermediate_data', ARRAY(String)),
     Column('status', String),
     Column('error', String),
-    Column('path', String),
+    Column('path', ARRAY(JSONB)),
     Column('created_at', DateTime, server_default=func.now())
 )
 
 taiat_output_table = Table(
     'taiat_query_data',
     metadata,
-    Column('id', BigInteger, primary_key=True),
+    Column('id', Integer, primary_key=True, autoincrement=True),
     Column('query_id', BigInteger, ForeignKey('taiat_query.id')),
-    Column('data', JSONB),
+    Column('name', String),
+    Column('data', ARRAY(JSONB)),
     Column('created_at', DateTime, server_default=func.now())
 )
 
@@ -71,10 +73,10 @@ class PostgresDatabase(Database):
     ) -> None:
         try:
             session = self.session_maker()
-            qstmt = insert(taiat_query_table).values(
-                query.to_dict()
-            ),
-            id = session.execute(qstmt).fetchone()[0]
+            qd = query.as_db_dict()
+            qstmt = insert(taiat_query_table).values(qd).returning(
+                 taiat_query_table.c.id)
+            id = session.execute(qstmt).first()[0]
             for name, value in data.items():
                 dstmt = insert(taiat_output_table).values(
                     {
@@ -82,7 +84,7 @@ class PostgresDatabase(Database):
                         'name': name,
                         'data': value,
                     }
-                ),
+                )
                 session.execute(dstmt)
             session.commit()
         except Exception as e:

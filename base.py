@@ -16,7 +16,7 @@ class AgentData(BaseModel):
 
 class AgentGraphNode(BaseModel):
     name: str
-    function: Callable
+    function: Optional[Callable] = None
     inputs: list[AgentData]
     outputs: list[AgentData]
 
@@ -25,6 +25,7 @@ class AgentGraphNodeSet(BaseModel):
     nodes: list[AgentGraphNode]
 
 class TaiatQuery(BaseModel):
+    id: Optional[int] = None
     query: Annotated[str, operator.add]
     inferred_goal_output: Optional[str] = None
     intermediate_data: Annotated[list[str], operator.add] = []
@@ -35,16 +36,28 @@ class TaiatQuery(BaseModel):
     @classmethod
     def from_db_dict(db_dict: dict) -> "TaiatQuery":
         return TaiatQuery(
+            id=db_dict.get("id"),
             query=db_dict["query"],
+            inferred_goal_output=db_dict["inferred_goal_output"],
             status=db_dict["status"],
-            path=db_dict["path"],
+            error=db_dict["error"],
+            path=[AgentGraphNode(**node) for node in db_dict["path"]],
         )
     
     def as_db_dict(self) -> dict:
+        clean_path = [node.model_dump(exclude={"function"}) for node in self.path]
+        for node in clean_path:
+            for input in node["inputs"]:
+                input["data"] = None
+            for output in node["outputs"]:
+                output["data"] = None
         return {
+            "id": self.id,
             "query": self.query,
+            "inferred_goal_output": self.inferred_goal_output,
             "status": self.status,
-            "path": self.path,
+            "error": self.error,
+            "path": clean_path,
         }
 
 
