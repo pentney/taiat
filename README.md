@@ -9,7 +9,8 @@ Taiat can take:
 - an output processor that turns user queries into a selection of input data and desired outputs
 - an LLM API
 
-... and produce an agent graph that will; run all necessary agents, including any dependencies for the desired outputs. A simple example is in the examples/ folder, which contains an agent that will perform various kinds of analyses on Kaggle CVS datasets. Given queries such as:
+... and produce an agent graph that will; run all necessary agents, including any dependencies for the desired outputs. A simple example is in the examples/ folder, which contains an agent that will perform various kinds of analyses on Kaggle CVS datasets. It can be tested on the command line with
+`python taiat/examples/kaggle.py --request="<request here>"`. Give it queries such as:
 
 ```
 Perform clustering on the points in the Pima dataset.
