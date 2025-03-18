@@ -16,7 +16,7 @@ class AgentData(BaseModel):
 
 class AgentGraphNode(BaseModel):
     name: str
-    description: str
+    description: Optional[str] = None
     function: Optional[Callable] = None
     inputs: list[AgentData]
     outputs: list[AgentData]

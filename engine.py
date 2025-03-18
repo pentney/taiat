@@ -13,11 +13,9 @@ class TaiatEngine:
     def __init__(
             self,
             llm_dict: dict[str, BaseChatModel],
-            graph: StateGraph,
             builder: TaiatBuilder,
             output_matcher: Callable[[list[str]], list[str]]):
         self.llms = llm_dict
-        self.graph = graph
         self.builder = builder
         self.output_matcher = output_matcher
 
@@ -60,9 +58,13 @@ class TaiatEngine:
                                    query.error = f"Graph error: circular dependency found: {needed_output}"
                                    return state
                               output_set.add(needed_output.name)
+            graph = self.builder.build(
+                terminal_nodes=[
+                    self.builder.data_source[output] for output in output_set],
+            )
             path = self.builder.get_plan(output_set)
             query.path = path
-            state = self.graph.invoke(state)
+            state = graph.invoke(state)
             query.status = "success"
         return state
 
