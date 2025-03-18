@@ -23,10 +23,9 @@ class TaiatEngine:
 
     def run(
           self,
-          query: TaiatQuery,
-          data: dict[str, Any],
+          state: State,
           ) -> State:
-        state = State({"query": query, "data": data})
+        query = state.query
         goal_outputs = self.output_matcher(query.query)
         if goal_outputs is None:
             query.status = "error"
