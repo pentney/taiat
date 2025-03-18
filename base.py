@@ -2,17 +2,30 @@ import operator
 from typing import Any, Callable, Optional
 from typing_extensions import Annotated, TypedDict
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, ConfigDict
 
 
 class AgentData(BaseModel):
     name: str
+    parameters: dict[str, Any] = {}
     data: Optional[Any] = None
 
     @classmethod
     @field_validator("data",mode="after")
     def validate_data(cls):
         return cls
+
+# Used for hashability in sets.
+# Should NOT be used in actual workflow runs, as the data
+# cannot be updated.
+class FrozenAgentData(AgentData):
+    model_config = {"frozen": True}
+
+    def __hash__(self):
+        # Convert dictionary to an immutable format (sorted tuple of key-value pairs)
+        param_tuple = tuple(sorted(self.parameters.items()))
+        return hash((self.name, param_tuple))
+
 
 class AgentGraphNode(BaseModel):
     name: str
@@ -64,7 +77,7 @@ class TaiatQuery(BaseModel):
 
 class State(TypedDict):
     query: Annotated[TaiatQuery, lambda x,_: x]
-    data: Annotated[dict[str, Any], operator.or_] = {}
+    data: Annotated[dict[str, AgentData], operator.or_] = {}
 
 
 TAIAT_TERMINAL_NODE = "__terminal__"

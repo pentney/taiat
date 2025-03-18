@@ -5,29 +5,24 @@ from langchain_core.language_models.fake_chat_models import FakeChatModel
 
 from taiat.engine import TaiatEngine
 from taiat.builder import AgentData, TaiatBuilder, TaiatQuery, TAIAT_TERMINAL_NODE, State
-from test_agents import TestNodeSet
+from test_agents import TestNodeSet, TestNodeSetWithParams
 
 class DummyModel(FakeChatModel):
     pass
 
 class TestGraph(unittest.TestCase):
-    def _build_graph(self):
+    def _build_graph(self, node_set):
         llm = DummyModel()
         builder = TaiatBuilder(llm)
         graph = builder.build(
-            state=State(
-                data={
-                    "dataset": pd.DataFrame(),
-                },
-            ),
-            node_set=TestNodeSet,
-            inputs=["dataset"],
+            node_set=node_set,
+            inputs=[AgentData(name="dataset", parameters={})],
             terminal_nodes=["td_summary"],
         )
         return builder, graph
 
     def test_build_graph(self):
-        _, graph = self._build_graph()
+        _, graph = self._build_graph(TestNodeSet)
         assert graph is not None
         nodes = graph.get_graph().nodes
         expected_nodes = ["__start__", "dea_analysis", "cex_analysis", "ppi_analysis",
@@ -54,28 +49,65 @@ class TestGraph(unittest.TestCase):
         assert len(expected_edges) == 0
 
     def test_run_graph(self):
-        builder, graph = self._build_graph()
+        builder, _ = self._build_graph(TestNodeSet)
         engine = TaiatEngine(
             llm_dict={
                 "llm": DummyModel(),
             },
-            graph=graph,
             builder=builder,
-            output_matcher=lambda x: ["td_summary"],
+            node_set=TestNodeSet,
+            output_matcher=lambda x: [AgentData(
+                name="td_summary",
+                parameters={},
+            )],
         )
         query = TaiatQuery(
             query="Give me a TDE summary",
         )
-        state = engine.run(
+        state = State(
             query=query,
             data={
-                "dataset": pd.DataFrame({
+                "dataset": AgentData(
+                    name="dataset",
+                    data=pd.DataFrame({
                     "id": [1, 2, 3],
-                }),
+                })),
             },
         )
-        assert query.status == "success"
+        state = engine.run(state)
+        assert query.status == "success", "Error: " + query.error
         assert state["data"]["td_summary"] == "summary of TD. sum: 9.0"
+
+    def test_run_graph_with_params(self):
+        builder, _ = self._build_graph(TestNodeSetWithParams)
+        engine = TaiatEngine(
+            llm_dict={
+                "llm": DummyModel(),
+            },
+            builder=builder,
+            node_set=TestNodeSetWithParams,
+            output_matcher=lambda x: [AgentData(
+                name="td_summary",
+                parameters={},
+            )],
+        )
+        query = TaiatQuery(
+            query="Give me a TDE summary",
+        )
+        state = State(
+            query=query,
+            data={
+                "dataset": AgentData(
+                    name="dataset",
+                    data=pd.DataFrame({
+                    "id": [1, 2, 3],
+                })),
+            },
+        )
+        state = engine.run(state)
+        assert query.status == "success", "Error: " + query.error
+        assert state["data"]["td_summary"] == "summary of TD. sum: 6.0"
+
 
 if __name__ == "__main__":
     unittest.main()

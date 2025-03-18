@@ -5,7 +5,7 @@ from typing import Callable, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import StateGraph
 
-from taiat.base import TaiatQuery, State
+from taiat.base import State, FrozenAgentData, AgentGraphNodeSet
 from taiat.builder import TaiatBuilder
 
 
@@ -14,8 +14,10 @@ class TaiatEngine:
             self,
             llm_dict: dict[str, BaseChatModel],
             builder: TaiatBuilder,
+            node_set: AgentGraphNodeSet,
             output_matcher: Callable[[list[str]], list[str]]):
         self.llms = llm_dict
+        self.node_set = node_set
         self.builder = builder
         self.output_matcher = output_matcher
 
@@ -23,48 +25,21 @@ class TaiatEngine:
           self,
           state: State,
           ) -> State:
-        query = state.query
+        query = state["query"]
         goal_outputs = self.output_matcher(query.query)
         if goal_outputs is None:
             query.status = "error"
             query.error = "No goal output"
             return state
+        # Convert goal_outputs to AgentData if they are strings
+        for i, goal_output in enumerate(goal_outputs):
+            if type(goal_output) == str:
+                goal_outputs[i] = FrozenAgentData(name=goal_output, parameters={})
         query.inferred_goal_output = goal_outputs
-        for goal_output in query.inferred_goal_output:
-            if goal_output not in self.builder.data_source:
-                print("goal_output not in data_source", goal_output)
-                query.status = "error"
-                query.error = f"Goal output {goal_output} unknown"
-                return state
-            else:
-                output_set = set()
-                output_set.add(goal_output)
-                while len(output_set) > 0:
-                    current_output = output_set.pop()
-                    if current_output not in self.builder.data_dependence:
-                         query.status = "error"
-                         query.error = f"Graph error: bad intermediate {current_output} found"
-                         return state
-                    needed_outputs = copy(self.builder.data_dependence[current_output])
-                    if needed_outputs:
-                         while len(needed_outputs) > 0:
-                              needed_output = needed_outputs.pop()
-                              if needed_output.name not in self.builder.data_dependence:
-                                   query.status = "error"
-                                   query.error = f"Intermediate data {needed_output.name} unknown"
-                                   return state
-                              if needed_output.name in needed_outputs:
-                                   query.status = "error"
-                                   query.error = f"Graph error: circular dependency found: {needed_output}"
-                                   return state
-                              output_set.add(needed_output.name)
-            graph = self.builder.build(
-                terminal_nodes=[
-                    self.builder.data_source[output] for output in output_set],
-            )
-            path = self.builder.get_plan(output_set)
-            query.path = path
-            state = graph.invoke(state)
-            query.status = "success"
+        graph, query.status, query.error = self.builder.get_plan(goal_outputs)
+        if query.status == "error":
+            return state
+        state = graph.invoke(state)
+        query.status = "success"
         return state
 
