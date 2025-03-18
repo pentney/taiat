@@ -1,17 +1,17 @@
 # Machine learning agents for a Taiat workflow.
 import tempfile
-import kaggle
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.cluster import KMeans
+from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData, State
 
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 
-llm = ChatAnthropic(model="claude-3-5-sonnet-20240620")
+llm = ChatOpenAI(model="gpt-4o-mini")
 
 class MLAgentState(State):
     model: str
@@ -83,7 +83,7 @@ Report:
     return state
 
 agent_roster = AgentGraphNodeSet(
-    AgentGraphNode(
+    nodes=[AgentGraphNode(
         name="load_dataset",
         description="Load the dataset",
         function=load_dataset,
@@ -123,7 +123,8 @@ agent_roster = AgentGraphNodeSet(
         description="Make a prediction and generate a report",
         function=predict_and_generate_report,
         inputs=[AgentData(name="model", data="")],
-        outputs=[AgentData(name="model_preds", data=""), AgentData(name="model_report", data="")],
+        outputs=[AgentData(name="model_preds", data=""),
+                 AgentData(name="model_report", data="")],
     ),
     AgentGraphNode(
         name="results_analysis",
@@ -135,5 +136,5 @@ agent_roster = AgentGraphNodeSet(
             AgentData(name="model_report", data="")
         ],
         outputs=[AgentData(name="summary", data="")],
-    ),
+    )]
 )
