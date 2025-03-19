@@ -1,73 +1,74 @@
 import pandas as pd
+
 from taiat.builder import AgentData, AgentGraphNode, AgentGraphNodeSet, State
-def cex_analysis(state: State) -> State:
-    state["data"]["cex_data"] = state["data"]["dea_data"].model_copy(deep=True)
-    state["data"]["cex_data"].data["cex"] = 1.0
+
+def three_analysis(state: State) -> State:
+    state["data"]["three_data"] = state["data"]["one_data"].model_copy(deep=True)
+    state["data"]["three_data"].data["three"] = 1.0
     return state
     return state
 
-def ppi_analysis(state: State) -> State:
-    state["data"]["ppi_data"] = state["data"]["dea_data"].model_copy(deep=True)
-    state["data"]["ppi_data"].data["ppi"] = 2.0
+def two_analysis(state: State) -> State:
+    state["data"]["two_data"] = state["data"]["one_data"].model_copy(deep=True)
+    state["data"]["two_data"].data["two"] = 2.0
     return state
 
-def dea_analysis(state: State) -> State:
-    state["data"]["dea_data"] = state["data"]["dataset"].model_copy(deep=True)
-    state["data"]["dea_data"].data["dea"] = 0.0
+def one_analysis(state: State) -> State:
+    state["data"]["one_data"] = state["data"]["dataset"].model_copy(deep=True)
+    state["data"]["one_data"].data["one"] = 0.0
     return state
 
-def dea_analysis_w_params(state: State) -> State:
-    state["data"]["dea_data"] = state["data"]["dataset"].model_copy(deep=True)
-    state["data"]["dea_data"].data["dea"] = -1.0
+def one_analysis_w_params(state: State) -> State:
+    state["data"]["one_data"] = state["data"]["dataset"].model_copy(deep=True)
+    state["data"]["one_data"].data["one"] = -1.0
     return state
 
-def tde_analysis(state: State) -> State:
-    state["data"]["tde_data"] = state["data"]["cex_data"].model_copy(deep=True)
-    state["data"]["tde_data"].data = pd.merge(
-        state["data"]["tde_data"].data, state["data"]["ppi_data"].data, on=["id", "dea"], how="left"
+def four_analysis(state: State) -> State:
+    state["data"]["four_data"] = state["data"]["three_data"].model_copy(deep=True)
+    state["data"]["four_data"].data = pd.merge(
+        state["data"]["four_data"].data, state["data"]["two_data"].data, on=["id", "one"], how="left"
     )
-    print("tde_data", state["data"]["tde_data"].data)
-    state["data"]["tde_data"].data["score"] = \
-        state["data"]["tde_data"].data["cex"] + state["data"]["tde_data"].data["ppi"] + \
-        state["data"]["tde_data"].data["dea"]
+    state["data"]["four_data"].data["score"] = \
+        state["data"]["four_data"].data["three"] + state["data"]["four_data"].data["two"] + \
+        state["data"]["four_data"].data["one"]
     return state
 
-def td_summary(state: State) -> State:
-    state["data"]["td_summary"] = \
-        f"summary of TD. sum: {state['data']['tde_data'].data['score'].sum()}"
+def four_summary(state: State) -> State:
+    state["data"]["four_summary"] = \
+        f"summary of FOUR. sum: {state['data']['four_data'].data['score'].sum()}"
     return state
 
 TestNodeSet = AgentGraphNodeSet(
     nodes=[
         AgentGraphNode(
-            name="dea_analysis",
-            function=dea_analysis,
+            name="one_analysis",
+            function=one_analysis,
             inputs=[AgentData(name="dataset")],
-            outputs=[AgentData(name="dea_data")],
+            outputs=[AgentData(name="one_data")],
         ),
         AgentGraphNode(
-            name="ppi_analysis",
-            function=ppi_analysis,
-            inputs=[AgentData(name="dea_data")],
-            outputs=[AgentData(name="ppi_data")],
+            name="two_analysis",
+            function=two_analysis,
+            inputs=[AgentData(name="one_data")],
+            outputs=[AgentData(name="two_data")],
         ),
         AgentGraphNode(
-            name="cex_analysis",
-            function=cex_analysis,
-            inputs=[AgentData(name="dea_data")],
-            outputs=[AgentData(name="cex_data")],
+            name="three_analysis",
+            function=three_analysis,
+            inputs=[AgentData(name="one_data")],
+            outputs=[AgentData(name="three_data")],
         ),
         AgentGraphNode(
-            name="tde_analysis",
-            function=tde_analysis,
-            inputs=[AgentData(name="cex_data"), AgentData(name="ppi_data")],
-            outputs=[AgentData(name="tde_data")],
+            name="four_analysis",
+            function=four_analysis,
+            inputs=[AgentData(name="three_data"), AgentData(name="two_data")],
+            outputs=[AgentData(name="four_data")],
         ),
         AgentGraphNode(
-            name="td_summary",
-            function=td_summary,
-            inputs=[AgentData(name="tde_data")],
-            outputs=[AgentData(name="td_summary")],
+            name="four_summary",
+            function=four_summary,
+            inputs=[AgentData(name="four_data")],
+            outputs=[AgentData(name="four_summary")],
         )
     ],
 )
@@ -77,9 +78,9 @@ TestNodeSetWithParams.nodes[2].inputs[0].parameters = {"param": "value"}
 TestNodeSetWithParams.nodes[1].inputs[0].parameters = {"param": "value"}
 TestNodeSetWithParams.nodes.append(
         AgentGraphNode(
-            name="dea_analysis_w_params",
-            function=dea_analysis_w_params,
+            name="one_analysis_w_params",
+            function=one_analysis_w_params,
             inputs=[AgentData(name="dataset")],
-            outputs=[AgentData(name="dea_data", parameters={"param": "value"})],
+            outputs=[AgentData(name="one_data", parameters={"param": "value"})],
         )
 )

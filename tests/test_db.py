@@ -34,44 +34,44 @@ class TestDB(unittest.TestCase):
         )
         db.add_run(
             query=TaiatQuery(
-                query='Give me a TDE summary',
-                inferred_goal_output='td_summary',
-                intermediate_data=['tde_data', 'ppi_data', 'cex_data', 'dea_data'],
+                query='Give me a four summary',
+                inferred_goal_output='four_summary',
+                intermediate_data=['four_data', 'three_data', 'two_data', 'dea_data'],
                 status='success',
                 path=[
                     AgentGraphNode(
-                        name="dea_analysis",
+                        name="one_analysis",
                         inputs=[AgentData(name="dataset", data="this should be clobbered")],
-                        outputs=[AgentData(name="dea_data")],
+                        outputs=[AgentData(name="one_data")],
                     ),
                     AgentGraphNode(
-                        name="ppi_analysis",
+                        name="three_analysis",
                         inputs=[AgentData(name="dataset")],
-                        outputs=[AgentData(name="ppi_data")],
+                        outputs=[AgentData(name="three_data")],
                     ),
                     AgentGraphNode(
-                        name="cex_analysis",
+                        name="two_analysis",
                         inputs=[AgentData(name="dataset")],
-                        outputs=[AgentData(name="cex_data", data="this too")],
+                        outputs=[AgentData(name="two_data", data="this too")],
                     ),
                     AgentGraphNode(
-                        name="tde_analysis",
-                        inputs=[AgentData(name="ppi_data"), AgentData(name="cex_data"), AgentData(name="dea_data")],
-                        outputs=[AgentData(name="tde_data")],
+                        name="four_analysis",
+                        inputs=[AgentData(name="three_data"), AgentData(name="two_data"), AgentData(name="dea_data")],
+                        outputs=[AgentData(name="four_data")],
                     ),
                     AgentGraphNode(
-                        name="td_summary",
-                        inputs=[AgentData(name="tde_data")],
-                        outputs=[AgentData(name="td_summary")],
+                        name="four_summary",
+                        inputs=[AgentData(name="four_data")],
+                        outputs=[AgentData(name="four_summary")],
                     ),
                 ],
             ),
             data={
-                'td_summary': 'TDE summary',
-                'tde_data': 'TDE data',
-                'ppi_data': 'PPI data',
-                'cex_data': 'CEX data',
-                'dea_data': 'DEA data',
+                'four_summary': 'FOUR summary',
+                'four_data': 'FOUR data',
+                'three_data': 'THREE data',
+                'two_data': 'TWO data',
+                'dea_data': 'ONE data',
             }
         )
         session = self.session_maker()

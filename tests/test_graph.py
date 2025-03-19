@@ -13,7 +13,7 @@ class DummyModel(FakeChatModel):
 class SimpleOutputMatcher(OutputMatcher):
     def get_outputs(self, query: str) -> list[AgentData]:
         return [AgentData(
-            name="td_summary",
+            name="four_summary",
             parameters={},
         )]
 
@@ -24,7 +24,7 @@ class TestGraph(unittest.TestCase):
         graph = builder.build(
             node_set=node_set,
             inputs=[AgentData(name="dataset", parameters={})],
-            terminal_nodes=["td_summary"],
+            terminal_nodes=["four_summary"],
         )
         return builder, graph
 
@@ -32,8 +32,8 @@ class TestGraph(unittest.TestCase):
         _, graph = self._build_graph(TestNodeSet)
         assert graph is not None
         nodes = graph.get_graph().nodes
-        expected_nodes = ["__start__", "dea_analysis", "cex_analysis", "ppi_analysis",
-                          "tde_analysis", "td_summary", TAIAT_TERMINAL_NODE, "__end__"]
+        expected_nodes = ["__start__", "one_analysis", "two_analysis", "three_analysis",
+                          "four_analysis", "four_summary", TAIAT_TERMINAL_NODE, "__end__"]
         assert len(nodes) == len(expected_nodes)
         for node in nodes.keys():
             assert node in expected_nodes
@@ -41,13 +41,13 @@ class TestGraph(unittest.TestCase):
         assert len(expected_nodes) == 0
         edges = graph.get_graph().edges
         expected_edges = [
-            ("__start__", "dea_analysis"),
-            ("dea_analysis", "cex_analysis"),
-            ("dea_analysis", "ppi_analysis"),
-            ("ppi_analysis", "tde_analysis"),
-            ("cex_analysis", "tde_analysis"),
-            ("tde_analysis", "td_summary"),
-            ("td_summary", TAIAT_TERMINAL_NODE),
+            ("__start__", "one_analysis"),
+            ("one_analysis", "two_analysis"),
+            ("one_analysis", "three_analysis"),
+            ("three_analysis", "four_analysis"),
+            ("two_analysis", "four_analysis"),
+            ("four_analysis", "four_summary"),
+            ("four_summary", TAIAT_TERMINAL_NODE),
             (TAIAT_TERMINAL_NODE, "__end__"),
         ]
         for edge in edges:
@@ -66,7 +66,7 @@ class TestGraph(unittest.TestCase):
             output_matcher=SimpleOutputMatcher(),
         )
         query = TaiatQuery(
-            query="Give me a TDE summary",
+            query="Give me a FOUR summary",
         )
         state = State(
             query=query,
@@ -80,7 +80,7 @@ class TestGraph(unittest.TestCase):
         )
         state = engine.run(state)
         assert query.status == "success", "Error: " + query.error
-        assert state["data"]["td_summary"] == "summary of TD. sum: 9.0"
+        assert state["data"]["four_summary"] == "summary of FOUR. sum: 9.0"
 
     def test_run_graph_with_params(self):
         builder, _ = self._build_graph(TestNodeSetWithParams)
@@ -93,7 +93,7 @@ class TestGraph(unittest.TestCase):
             output_matcher=SimpleOutputMatcher(),
         )
         query = TaiatQuery(
-            query="Give me a TDE summary",
+            query="Give me a FOUR summary",
         )
         state = State(
             query=query,
@@ -107,7 +107,7 @@ class TestGraph(unittest.TestCase):
         )
         state = engine.run(state)
         assert query.status == "success", "Error: " + query.error
-        assert state["data"]["td_summary"] == "summary of TD. sum: 6.0"
+        assert state["data"]["four_summary"] == "summary of FOUR. sum: 6.0"
 
 
 if __name__ == "__main__":
