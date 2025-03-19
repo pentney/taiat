@@ -9,8 +9,19 @@ Taiat can take:
 - an output processor that turns user queries into a selection of input data and desired outputs
 - an LLM API
 
-... and produce an agent graph that will; run all necessary agents, including any dependencies for the desired outputs. A simple example is in the examples/ folder, which contains an agent that will perform various kinds of analyses on Kaggle CVS datasets. It can be tested on the command line with
-`python taiat/examples/kaggle.py --request="<request here>"`. Give it queries such as:
+... and produce an agent graph that will; run all necessary agents, including any dependencies for the desired outputs.
+
+
+## Agent Graph
+
+As is standard in Langgraph, the agent graph is a directed graph where each node is an agent, and each edge is a dependency. The graph is constructed from the agents and their dependencies, and then the graph is traversed to execute the agents in the correct order. The primary difference between TAIAT and standard Langgraph is that TAIAT allows for the specification of constraints, such that each agent will be run when its dependencies have been satisfied - specifically, that inputs to the agent have been produced by agents that provide them as outputs. The selection of next task is
+handled by the TaiatManager, which looks for unfulfilled dependencies and selects the next agent to run to fulfill them.
+
+
+## Example
+
+To use TAIAT, provide a series of agents, a query, and an output processor. A simple example is in the examples/ folder, which contains an agent that will perform various kinds of analyses on Kaggle CVS datasets. It can be tested on the command line with
+`python taiat/examples/ml_workflow.py --request="<request here>"`. Give it queries such as:
 
 ```
 Perform clustering on the points in the Pima dataset.

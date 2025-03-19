@@ -1,6 +1,9 @@
 # Machine learning agents for a Taiat workflow.
 import tempfile
 import pandas as pd
+from pathlib import Path
+
+import kaggle
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
@@ -10,6 +13,7 @@ from sklearn.model_selection import train_test_split
 from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData, State
 
 from langchain_openai import ChatOpenAI
+from langchain_core.language_models.chat_models import BaseChatModel
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 
@@ -23,43 +27,60 @@ class MLAgentState(State):
 def load_dataset(state: MLAgentState) -> MLAgentState:
     kaggle.api.authenticate()
     tmpdir = tempfile.mkdtemp()
+    print("Downloading dataset: ", state["data"]['dataset_name'], "to", tmpdir)
     kaggle.api.dataset_download_files(
-        state.data['dataset_name'],
+        state["data"]['dataset_name'],
         path=f"{tmpdir}/data",
-        unzip=False,
+        unzip=True,
     )
-    state.data["dataset"], state.data["dataset_test"] = \
-        train_test_split(state.data["dataset"], test_size=0.2, random_state=42)
+    csv_file = next(Path(f"{tmpdir}/data").glob("*.csv"))
+    state["data"]["dataset"] = pd.read_csv(csv_file)
+
+    categorical_columns = state["data"]["dataset"].select_dtypes(include=['object', 'category']).columns
+    categorical_columns = [col for col in categorical_columns if col != 'class']
+    
+    print("categorical_columns: ", categorical_columns)
+    # Apply one-hot encoding to categorical columns
+    if categorical_columns:
+        state["data"]["dataset"] = pd.get_dummies(state["data"]["dataset"], columns=categorical_columns, drop_first=True)
+    
+
+    state["data"]["dataset"], state["data"]["dataset_test"] = \
+        train_test_split(state["data"]["dataset"], test_size=0.2, random_state=42)
+    label = state["data"]["dataset"].columns[-1]
+    state["data"]["label"] = label
+    state["data"]["model_params"] = {}
+    print("downloaded!")
     return state
 
 def logistic_regression(state: MLAgentState) -> MLAgentState:
-    model = LogisticRegression(**state.data["model_params"])
-    model.fit(state.data["dataset"].drop(columns=["Outcome"]), state.data["dataset"]["Outcome"])
-    state.data["model"] = model
+    model = LogisticRegression(**state["data"]["model_params"])
+    model.fit(state["data"]["dataset"].drop(columns=[state['data']['label']]), state["data"]["dataset"][state['data']['label']])
+    state["data"]["model"] = model
     return state
 
 
 def random_forest(state: MLAgentState) -> MLAgentState:
-    model = RandomForestClassifier(**state.data["model_params"])
-    model.fit(state.data["dataset"].drop(columns=["Outcome"]), state.data["dataset"]["Outcome"])
-    state.data["model"] = model
+    model = RandomForestClassifier(**state["data"]["model_params"])
+    model.fit(state["data"]["dataset"].drop(columns=[state['data']['label']]), state["data"]["dataset"][state['data']['label']])
+    state["data"]["model"] = model
     return state
 
 def nearest_neighbors(state: MLAgentState) -> MLAgentState:
-    model = KNeighborsClassifier(**state.data["model_params"])
-    model.fit(state.data["dataset"].drop(columns=["Outcome"]), state.data["dataset"]["Outcome"])
-    state.data["model"] = model
+    model = KNeighborsClassifier(**state["data"]["model_params"])
+    model.fit(state["data"]["dataset"].drop(columns=[state['data']['label']]), state["data"]["dataset"][state['data']['label']])
+    state["data"]["model"] = model
     return state
 
 def clustering(state: MLAgentState) -> MLAgentState:
-    model = KMeans(**state.data["model_params"])
-    model.fit(state.data["dataset"].drop(columns=["Outcome"]))
-    state.data["model"] = model
+    model = KMeans(**state["data"]["model_params"])
+    model.fit(state["data"]["dataset"].drop(columns=[state['data']['label']]))
+    state["data"]["model"] = model
     return state
 
 def predict_and_generate_report(state: MLAgentState) -> MLAgentState:
-    state.data["model_preds"] = state.data["model"].predict(state.data["dataset_test"].drop(columns=["Outcome"]))
-    state.data["model_report"] = classification_report(state.data["dataset_test"]["Outcome"], state.data["model_preds"])
+    state["data"]["model_preds"] = state["data"]["model"].predict(state["data"]["dataset_test"].drop(columns=[state['data']['label']]))
+    state["data"]["model_report"] = classification_report(state["data"]["dataset_test"][state['data']['label']], state["data"]["model_preds"])
     return state
 
 summary_prompt_prefix = """
@@ -74,12 +95,12 @@ def results_analysis(state: MLAgentState) -> MLAgentState:
     summary_prompt = f"""
 {summary_prompt_prefix}
 
-Dataset: {state.data['dataset_name']}
-Model: {state.data['model_name']}
+Dataset: {state['data']['dataset_name']}
+Model: {state['data'].get('model_name')}
 Report:
-{state.data['model_report']}
+{state['data']['model_report']}
 """
-    state.data['summary'] = llm.invoke(summary_prompt)
+    state["data"]['summary'] = llm.invoke(summary_prompt).content
     return state
 
 agent_roster = AgentGraphNodeSet(
@@ -94,37 +115,45 @@ agent_roster = AgentGraphNodeSet(
         name="logistic_regression",
         description="Train a logistic regression model",
         function=logistic_regression,
-        inputs=[AgentData(name="dataset", data="")],    
-        outputs=[AgentData(name="model", data="")],
+        inputs=[AgentData(name="dataset")],
+        outputs=[AgentData(name="model", parameters={
+            "model_type": "logistic_regression"
+        }), AgentData(name="model_params", data={})],
     ),
     AgentGraphNode(
         name="random_forest",
         description="Train a random forest model",
         function=random_forest,
-        inputs=[AgentData(name="dataset", data="")],
-        outputs=[AgentData(name="model", data="")],
+        inputs=[AgentData(name="dataset")],
+        outputs=[AgentData(name="model", parameters={
+            "model_type": "random_forest"
+        })],
     ),
     AgentGraphNode(
         name="nearest_neighbors",
         description="Train a nearest neighbors model",
         function=nearest_neighbors,
-        inputs=[AgentData(name="dataset", data="")],
-        outputs=[AgentData(name="model", data="")],
+        inputs=[AgentData(name="dataset")],
+        outputs=[AgentData(name="model", parameters={
+            "model_type": "nearest_neighbors"
+        })],
     ),
     AgentGraphNode(
         name="clustering",
         description="Train a clustering model",
         function=clustering,
-        inputs=[AgentData(name="dataset", data="")],
-        outputs=[AgentData(name="model", data="")],
+        inputs=[AgentData(name="dataset")],
+        outputs=[AgentData(name="model", parameters={
+            "model_type": "clustering"
+        })],
     ),
     AgentGraphNode(
         name="predict_and_generate_report",
         description="Make a prediction and generate a report",
         function=predict_and_generate_report,
-        inputs=[AgentData(name="model", data="")],
-        outputs=[AgentData(name="model_preds", data=""),
-                 AgentData(name="model_report", data="")],
+        inputs=[AgentData(name="model")],
+        outputs=[AgentData(name="model_preds"),
+                 AgentData(name="model_report")],
     ),
     AgentGraphNode(
         name="results_analysis",
@@ -132,7 +161,6 @@ agent_roster = AgentGraphNodeSet(
         function=results_analysis,
         inputs=[
             AgentData(name="dataset_name", data=""),
-            AgentData(name="model_name", data=""),
             AgentData(name="model_report", data="")
         ],
         outputs=[AgentData(name="summary", data="")],

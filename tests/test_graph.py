@@ -3,12 +3,19 @@ import unittest
 import pandas as pd
 from langchain_core.language_models.fake_chat_models import FakeChatModel
 
-from taiat.engine import TaiatEngine
+from taiat.engine import TaiatEngine, OutputMatcher
 from taiat.builder import AgentData, TaiatBuilder, TaiatQuery, TAIAT_TERMINAL_NODE, State
 from test_agents import TestNodeSet, TestNodeSetWithParams
 
 class DummyModel(FakeChatModel):
     pass
+
+class SimpleOutputMatcher(OutputMatcher):
+    def get_outputs(self, query: str) -> list[AgentData]:
+        return [AgentData(
+            name="td_summary",
+            parameters={},
+        )]
 
 class TestGraph(unittest.TestCase):
     def _build_graph(self, node_set):
@@ -56,10 +63,7 @@ class TestGraph(unittest.TestCase):
             },
             builder=builder,
             node_set=TestNodeSet,
-            output_matcher=lambda x: [AgentData(
-                name="td_summary",
-                parameters={},
-            )],
+            output_matcher=SimpleOutputMatcher(),
         )
         query = TaiatQuery(
             query="Give me a TDE summary",
@@ -86,10 +90,7 @@ class TestGraph(unittest.TestCase):
             },
             builder=builder,
             node_set=TestNodeSetWithParams,
-            output_matcher=lambda x: [AgentData(
-                name="td_summary",
-                parameters={},
-            )],
+            output_matcher=SimpleOutputMatcher(),
         )
         query = TaiatQuery(
             query="Give me a TDE summary",

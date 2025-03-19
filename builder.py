@@ -24,6 +24,11 @@ from taiat.base import (
     taiat_terminal_node,
 )
 
+START_NODE = AgentGraphNode(name=START, function=None, inputs=[], outputs=[])
+
+
+from taiat.manager import TaiatManager
+
 # def _set_env(var: str):
 #     if not os.environ.get(var):
 #         os.environ[var] = getpass.getpass(f"{var}: ")
@@ -31,14 +36,13 @@ from taiat.base import (
 
 llm = ChatAnthropic(model="claude-3-5-sonnet-latest")
 
-START_NODE = AgentGraphNode(name=START, function=None, inputs=[], outputs=[])
-
 class TaiatBuilder:
-    def __init__(self, llm: BaseChatModel):
+    def __init__(self, llm: BaseChatModel, verbose: bool = False):
         self.llm = llm
         self.graph = None
         self.data_source = defaultdict(dict)
         self.data_dependence = defaultdict(dict)
+        self.verbose = verbose
 
     def source_match(self, name, parameters):
         if name in self.data_source:
@@ -68,6 +72,7 @@ class TaiatBuilder:
             inputs: list[AgentData],
             terminal_nodes: list[str],
         ) -> StateGraph:
+        self.node_set = node_set
         self.graph_builder = StateGraph(State)
         self.graph_builder.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
         self.graph_builder.add_edge(TAIAT_TERMINAL_NODE, END)
@@ -86,6 +91,7 @@ class TaiatBuilder:
         for input in inputs:
             self.data_dependence.setdefault(input.name, {})[json.dumps(input.parameters)] = [START_NODE]
             self.data_source.setdefault(input.name, {})[json.dumps(input.parameters)] = START_NODE
+        set()
         for dest_output_name, dependence_map in self.data_dependence.items():
             for dest_output_parameter_json, data_dependencies in dependence_map.items():
                 dest_output_parameters = json.loads(dest_output_parameter_json)
@@ -107,7 +113,7 @@ class TaiatBuilder:
         self.graph = self.graph_builder.compile()
         return self.graph
 
-    def get_plan(self, goal_outputs: list[str]) -> tuple[StateGraph | None, str, str]:
+    def get_plan(self, query: TaiatQuery, goal_outputs: list[str]) -> tuple[StateGraph | None, str, str]:
         start_nodes = []
         all_needed_outputs = set(FrozenAgentData(**goal_output.model_dump()) for goal_output in goal_outputs)
         for goal_output in goal_outputs:
@@ -151,24 +157,37 @@ class TaiatBuilder:
         graph_builder = StateGraph(State)
         graph_builder.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
         graph_builder.add_edge(TAIAT_TERMINAL_NODE, END)
-        plan_nodes = set()
+        plan_nodes = {}
+        reverse_plan_edges = defaultdict(list)
+        plan_edges = defaultdict(list)
         for output in all_needed_outputs:
             src = self.source_match(output.name, output.parameters)
             if src is None:
                 status = "error"
                 error = f"Graph error: bad intermediate data {output} found"
                 return (None, status, error)
-            elif src.name not in plan_nodes and src is not START_NODE:
-                graph_builder.add_node(src.name, src.function)
-                plan_nodes.add(src.name)
+            elif src.name not in plan_nodes:
+                #graph_builder.add_node(src.name, src.function)
+                plan_nodes[src.name] = src
         for src, dest in self.graph_builder.edges:
             if ((src in plan_nodes or src is START) and dest in plan_nodes) or \
                 (src in plan_nodes and dest is TAIAT_TERMINAL_NODE):
-                graph_builder.add_edge(src, dest)
+                reverse_plan_edges[dest].append(src)
+                plan_edges[src].append(dest)
+
+        self.manager = TaiatManager(self.node_set, reverse_plan_edges, verbose=self.verbose)     
+        # Add a conditional edge for every node backwards from the goal.
+        for node_name, node in plan_nodes.items():
+            router = self.manager.make_router_function(node_name)
+            if node_name != START:
+                graph_builder.add_node(node.name, node.function)
+            graph_builder.add_conditional_edges(
+                node.name, router
+            )
+        query.all_outputs = [output.name for output in all_needed_outputs]
         graph_builder.add_edge(TAIAT_TERMINAL_NODE, END)
         graph = graph_builder.compile()
         return (graph, "success", "")
-
 
     def visualize(self) -> Image:
         return Image(self.graph.get_graph().draw_mermaid_png())

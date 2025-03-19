@@ -42,7 +42,7 @@ class TaiatQuery(BaseModel):
     id: Optional[int] = None
     query: Annotated[str, operator.add]
     inferred_goal_output: Optional[str] = None
-    intermediate_data: Annotated[list[str], operator.add] = []
+    all_outputs: Annotated[list[str], operator.add] = []
     status: Optional[str] = None
     error: str = ""
     path: Optional[list[AgentGraphNode]] = None
