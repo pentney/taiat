@@ -42,7 +42,6 @@ class TaiatEngine:
           self,
           state: State,
           ) -> State:
-        print("STATE: ", state)
         query = state["query"]
         self.goal_outputs = self.output_matcher.get_outputs(query.query)
         if self.goal_outputs is None:
@@ -57,7 +56,6 @@ class TaiatEngine:
         graph, status = self.get_plan(self.goal_outputs, query)
         if status == "error":
             return state
-        print("STATE before invocation: ", state)
         state = graph.invoke(state)
         query.status = "success"
         return state
