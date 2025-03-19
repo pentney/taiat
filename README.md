@@ -9,7 +9,7 @@ Taiat can take:
 - an output processor that turns user queries into a selection of input data and desired outputs
 - an LLM API
 
-... and produce an agent graph that will; run all necessary agents, including any dependencies for the desired outputs.
+... and produce an agent graph that will run all necessary agents, including any dependencies for the desired outputs.
 
 
 ## Agent Graph
