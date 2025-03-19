@@ -1,5 +1,5 @@
 # taiat
-Three Agents In A Trenchcoat (Taiat) is a tool built on top of Langgraph to make building dependency graphs among agents even easier. It takes a series of agents, the expected outputs and needed inputs of each, and then executes workflows specifically to produce a desired output. With the addition of a tool to select desired outputs from an NLP query, this can be a full solution for question answering with an agent workflow.
+Three Agents In A Trenchcoat (Taiat) is a tool built on top of Langgraph to make building dependency graphs among agents even easier. It takes a series of agents, the expected outputs and needed inputs of each, and then executes workflows specifically to produce a desired output. With the addition of a tool to select desired outputs from a natural language query, this can be a full solution for question answering with an agent workflow.
 
 ## Overview
 
