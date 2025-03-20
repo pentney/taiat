@@ -68,15 +68,23 @@ class TaiatBuilder:
 
     def build(
             self,
-            node_set: AgentGraphNodeSet,
+            node_set: AgentGraphNodeSet | list[dict],
             inputs: list[AgentData],
             terminal_nodes: list[str],
         ) -> StateGraph:
+        """
+        Builds dependency and source maps for a set of nodes for path generation.
+        """
         self.node_set = node_set
+        nodes = node_set
+        if isinstance(node_set, list):
+            nodes = AgentGraphNodeSet(nodes=[
+                AgentGraphNode(**node) for node in node_set
+            ])
         self.graph_builder = StateGraph(State)
         self.graph_builder.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
         self.graph_builder.add_edge(TAIAT_TERMINAL_NODE, END)
-        for node in node_set.nodes:
+        for node in nodes.nodes:
             for output in node.outputs:
                 output_json = json.dumps(output.parameters)
                 if output.name in self.data_source and \
@@ -91,7 +99,6 @@ class TaiatBuilder:
         for input in inputs:
             self.data_dependence.setdefault(input.name, {})[json.dumps(input.parameters)] = [START_NODE]
             self.data_source.setdefault(input.name, {})[json.dumps(input.parameters)] = START_NODE
-        set()
         for dest_output_name, dependence_map in self.data_dependence.items():
             for dest_output_parameter_json, data_dependencies in dependence_map.items():
                 dest_output_parameters = json.loads(dest_output_parameter_json)
@@ -189,7 +196,5 @@ class TaiatBuilder:
         graph = graph_builder.compile()
         return (graph, "success", "")
 
-    def visualize(self) -> Image:
-        return Image(self.graph.get_graph().draw_mermaid_png())
 
 
