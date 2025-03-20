@@ -58,9 +58,7 @@ class TestGraph(unittest.TestCase):
     def test_run_graph(self):
         builder, _ = self._build_graph(TestNodeSet)
         engine = TaiatEngine(
-            llm_dict={
-                "llm": DummyModel(),
-            },
+            llm=DummyModel(),
             builder=builder,
             output_matcher=SimpleOutputMatcher(),
         )
@@ -84,9 +82,7 @@ class TestGraph(unittest.TestCase):
     def test_run_graph_with_params(self):
         builder, _ = self._build_graph(TestNodeSetWithParams)
         engine = TaiatEngine(
-            llm_dict={
-                "llm": DummyModel(),
-            },
+            llm=DummyModel(),
             builder=builder,
             output_matcher=SimpleOutputMatcher(),
         )

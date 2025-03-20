@@ -7,17 +7,25 @@ from langgraph.graph import StateGraph
 
 from taiat.base import State, FrozenAgentData, AgentGraphNodeSet, TaiatQuery, AgentData, OutputMatcher
 from taiat.builder import TaiatBuilder
-
+from taiat.generic_matcher import GenericMatcher
 
 class TaiatEngine:
     def __init__(
             self,
-            llm_dict: dict[str, BaseChatModel],
+            llm: BaseChatModel,
             builder: TaiatBuilder,
-            output_matcher: OutputMatcher):
-        self.llms = llm_dict
+            output_matcher: OutputMatcher | None):
+        self.llm = llm
         self.builder = builder
-        self.output_matcher = output_matcher
+        if output_matcher is None:
+            if self.builder.node_set is None or not self.builder.node_set.nodes:
+                raise ValueError("Node set is not created or empty. Run builder.build() with a node set first.")
+            outputs = []
+            for node in self.builder.node_set.nodes:
+                outputs.extend(node.outputs)
+            self.output_matcher = GenericMatcher(llm, outputs)
+        else:
+            self.output_matcher = output_matcher
 
     def get_plan(
             self,

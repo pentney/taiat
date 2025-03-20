@@ -8,6 +8,7 @@ from pydantic import BaseModel, field_validator, ConfigDict
 class AgentData(BaseModel):
     name: str
     parameters: dict[str, Any] = {}
+    description: str = ""
     data: Optional[Any] = None
 
     @classmethod
