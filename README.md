@@ -1,5 +1,5 @@
 # taiat
-Three Agents In A Trenchcoat (Taiat) is a tool built on top of Langgraph to make building dependency graphs among agents even easier. It takes a series of agents, the expected outputs and needed inputs of each, and then executes workflows specifically to produce a desired output. With the addition of a tool to select desired outputs from an NLP query, this can be a full solution for question answering with an agent workflow.
+Three Agents In A Trenchcoat (Taiat) is a tool built on top of Langgraph to make building dependency graphs among agents even easier. It takes a series of agents, the expected outputs and needed inputs of each, and then executes workflows specifically to produce a desired output. With the addition of a tool to select desired outputs from a natural language query, this can be a full solution for question answering with an agent workflow.
 
 ## Overview
 
@@ -17,6 +17,16 @@ Taiat can take:
 As is standard in Langgraph, the agent graph is a directed graph where each node is an agent, and each edge is a dependency. The graph is constructed from the agents and their dependencies, and then the graph is traversed to execute the agents in the correct order. The primary difference between TAIAT and standard Langgraph is that TAIAT allows for the specification of constraints, such that each agent will be run when its dependencies have been satisfied - specifically, that inputs to the agent have been produced by agents that provide them as outputs. The selection of next task is
 handled by the TaiatManager, which looks for unfulfilled dependencies and selects the next agent to run to fulfill them.
 
+## Query Database
+
+There is a simple postgres implementation of a query/output DB interface for collecting query data and saving outputs, e.g.
+
+```
+        db = PostgresDatabase(session_maker=self.session_maker)
+        db.add_run(TaiatQuery( ... ))
+```
+
+See `tests/db.py` for an example.
 
 ## Example
 
