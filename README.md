@@ -14,8 +14,11 @@ Taiat can take:
 
 ## Agent Graph
 
-As is standard in Langgraph, the agent graph is a directed graph where each node is an agent, and each edge is a dependency. The graph is constructed from the agents and their dependencies, and then the graph is traversed to execute the agents in the correct order. The primary difference between TAIAT and standard Langgraph is that TAIAT allows for the specification of constraints, such that each agent will be run when its dependencies have been satisfied - specifically, that inputs to the agent have been produced by agents that provide them as outputs. The selection of next task is
-handled by the TaiatManager, which looks for unfulfilled dependencies and selects the next agent to run to fulfill them.
+Taiat creates two different types of graphs:
+- The TaiatBuilder `build()` method creates and returns a full node dependency graph, where each node is an agent, and each edge is a dependency. This graph can be run in the case that all outputs must be produced. The graph is traversed to execute the agents in the correct order.
+- The TaiatBuilder `get_plan()` method creates and returns a specific plan subgraph to produce one or more desired outputs. This subgraph will be pruned to only produce inputs necessary for the specified outputs. This is generally the approach an agent will want to use to answer specific queries.
+
+The primary difference between TAIAT and standard Langgraph is that TAIAT allows for the specification of constraints, such that each agent will be run when its dependencies have been satisfied - specifically, that inputs to the agent have been produced by agents that provide them as outputs. The selection of next task is handled by the TaiatManager, which looks for unfulfilled dependencies and selects the next agent to run to fulfill them.
 
 ## Query Database
 
