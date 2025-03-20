@@ -57,8 +57,8 @@ Request:
             if output.parameters:
                 for k, v in output.parameters.items():
                     output_desc += f" {k}:{v}"
-            self.output_names.append(output_desc)
             output_desc += f" ... {output.description}"
+            self.output_names.append(output_desc)
 
     def get_outputs(self, query: str) -> list[str]:
         """
