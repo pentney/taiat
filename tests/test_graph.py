@@ -62,7 +62,6 @@ class TestGraph(unittest.TestCase):
                 "llm": DummyModel(),
             },
             builder=builder,
-            node_set=TestNodeSet,
             output_matcher=SimpleOutputMatcher(),
         )
         query = TaiatQuery(
@@ -89,7 +88,6 @@ class TestGraph(unittest.TestCase):
                 "llm": DummyModel(),
             },
             builder=builder,
-            node_set=TestNodeSetWithParams,
             output_matcher=SimpleOutputMatcher(),
         )
         query = TaiatQuery(

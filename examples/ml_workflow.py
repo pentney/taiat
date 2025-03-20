@@ -62,7 +62,6 @@ def main():
             "llm": ChatOpenAI(model="gpt-4o-mini"),
         },
         builder=builder,
-        node_set=agent_roster,
         output_matcher=matcher,
     )
     state = MLAgentState(

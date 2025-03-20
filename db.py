@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     insert,
     func,
+    update,
     ARRAY,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -18,12 +19,18 @@ from sqlalchemy.orm import sessionmaker
 from taiat.base import TaiatQuery
 
 class Database(BaseModel):
+    """
+    Base class for a database.
+    """
     type: str
     def add_run(
             self,
             query: TaiatQuery,
             data: dict[str, Any],
         ) -> None:
+            """
+            Add a run to the database.
+            """
             pass
 
     def update_run(
@@ -31,6 +38,9 @@ class Database(BaseModel):
             query: TaiatQuery,
             data: dict[str, Any],
         ) -> None:
+            """
+            Update a run in the database.
+            """
             pass
 
 metadata = MetaData()
@@ -71,6 +81,9 @@ class PostgresDatabase(Database):
         query: TaiatQuery,
         data: dict[str, Any],
     ) -> None:
+        """
+        Add a run to the database.
+        """
         try:
             session = self.session_maker()
             qd = query.as_db_dict()
@@ -93,6 +106,34 @@ class PostgresDatabase(Database):
         finally:
             session.close()
 
+    def update_run(
+        self,
+        query: TaiatQuery,
+        data: dict[str, Any],
+    ) -> None:
+        """
+        Update a run in the database.
+        """
+        try:
+            session = self.session_maker()
+            qd = query.as_db_dict()
+            qstmt = update(taiat_query_table).values(qd)
+            session.execute(qstmt)
+            for name, value in data.items():
+                dstmt = insert(taiat_output_table).values(
+                    {
+                        'query_id': query.id,
+                        'name': name,
+                        'data': value,
+                    }
+                )
+                session.execute(dstmt)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
 
 
 

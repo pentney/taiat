@@ -5,23 +5,17 @@ from typing import Callable, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import StateGraph
 
-from taiat.base import State, FrozenAgentData, AgentGraphNodeSet, TaiatQuery, AgentData
+from taiat.base import State, FrozenAgentData, AgentGraphNodeSet, TaiatQuery, AgentData, OutputMatcher
 from taiat.builder import TaiatBuilder
 
-# base class for output matchers
-class OutputMatcher:
-    def get_outputs(self, query: str) -> list[str]:
-        return []
 
 class TaiatEngine:
     def __init__(
             self,
             llm_dict: dict[str, BaseChatModel],
             builder: TaiatBuilder,
-            node_set: AgentGraphNodeSet,
             output_matcher: OutputMatcher):
         self.llms = llm_dict
-        self.node_set = node_set
         self.builder = builder
         self.output_matcher = output_matcher
 
