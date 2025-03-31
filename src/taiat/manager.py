@@ -14,6 +14,7 @@ class TaiatManager:
                  reverse_plan_edges: dict[str, list[str]],
                  wait_interval: int = 5,
                  verbose: bool = False,
+                 metrics: Optional[TaiatMetrics] = None,
         ):
         self.interval = wait_interval
         self.node_set = node_set
@@ -28,6 +29,8 @@ class TaiatManager:
         self.output_status[TAIAT_TERMINAL_NODE] = "pending"
         self.status_lock = RLock()
         self.verbose = verbose
+        self.metrics = metrics
+
     def make_router_function(
             self,
             node) -> Callable:
@@ -58,6 +61,8 @@ class TaiatManager:
                         if self.verbose:
                             print(f"running {neighbor}, no dependencies, from {node}")
                         self.output_status[neighbor] = "running"
+                    if self.metrics is not None:
+                        self.metrics[neighbor]["calls"] += 1
                     return neighbor
                 else:
                     if all(
@@ -69,6 +74,8 @@ class TaiatManager:
                             if self.verbose:
                                 print(f"running {neighbor}, whose needs {back_neighbors} are now satisfied, from {node}")
                             self.output_status[neighbor] = "running"
+                        if self.metrics is not None:
+                            self.metrics[neighbor]["calls"] += 1
                         return neighbor
                     else:
                         # This node is not ready to run, so we need to find the next node to run
