@@ -29,11 +29,6 @@ START_NODE = AgentGraphNode(name=START, function=None, inputs=[], outputs=[])
 
 from taiat.manager import TaiatManager
 
-# def _set_env(var: str):
-#     if not os.environ.get(var):
-#         os.environ[var] = getpass.getpass(f"{var}: ")
-# _set_env("ANTHROPIC_API_KEY")
-
 llm = ChatAnthropic(model="claude-3-5-sonnet-latest")
 
 class TaiatBuilder:
@@ -71,6 +66,7 @@ class TaiatBuilder:
             node_set: AgentGraphNodeSet | list[dict],
             inputs: list[AgentData],
             terminal_nodes: list[str],
+            add_metrics: bool = True,
         ) -> StateGraph:
         """
         Builds dependency and source maps for a set of nodes for path generation.
@@ -117,6 +113,13 @@ class TaiatBuilder:
                                 self.graph_builder.add_edge(START, dep_dest.name)
                             else:
                                 self.graph_builder.add_edge(dep_src.name, dep_dest.name)
+
+        # Add metrics, if appropriate.
+        if self.add_metrics:
+            self.metrics = TaiatMetrics()
+            for node in self.graph_builder.nodes:
+                self.metrics.add_node_counter(node.name)
+
         self.graph = self.graph_builder.compile()
         return self.graph
 
