@@ -23,6 +23,7 @@ from taiat.base import (
     TAIAT_TERMINAL_NODE,
     taiat_terminal_node,
 )
+from taiat.metrics import TaiatMetrics
 
 START_NODE = AgentGraphNode(name=START, function=None, inputs=[], outputs=[])
 
@@ -32,12 +33,13 @@ from taiat.manager import TaiatManager
 llm = ChatAnthropic(model="claude-3-5-sonnet-latest")
 
 class TaiatBuilder:
-    def __init__(self, llm: BaseChatModel, verbose: bool = False):
+    def __init__(self, llm: BaseChatModel, verbose: bool = False, add_metrics: bool = True):
         self.llm = llm
         self.graph = None
         self.data_source = defaultdict(dict)
         self.data_dependence = defaultdict(dict)
         self.verbose = verbose
+        self.add_metrics = add_metrics
 
     def source_match(self, name, parameters):
         if name in self.data_source:
@@ -118,7 +120,7 @@ class TaiatBuilder:
         if self.add_metrics:
             self.metrics = TaiatMetrics()
             for node in self.graph_builder.nodes:
-                self.metrics.add_node_counter(node.name)
+                self.metrics.add_node_counter(node)
 
         self.graph = self.graph_builder.compile()
         return self.graph

@@ -1,7 +1,8 @@
 from functools import partial
-from typing import Callable
+from typing import Callable, Optional
 from taiat.base import TAIAT_TERMINAL_NODE
 from taiat.builder import AgentGraphNode, AgentGraphNodeSet, State, START_NODE
+from taiat.metrics import TaiatMetrics
 from threading import RLock
 import time
 from langgraph.graph import START

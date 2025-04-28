@@ -36,18 +36,18 @@ def load_dataset(state: MLAgentState) -> MLAgentState:
     csv_file = next(Path(f"{tmpdir}/data").glob("*.csv"))
     state["data"]["dataset"] = pd.read_csv(csv_file)
 
-    categorical_columns = state["data"]["dataset"].select_dtypes(include=['object', 'category']).columns
+    categorical_columns = state["data"]["dataset"].select_dtypes(include=['object', 'category', 'string']).columns
     categorical_columns = [col for col in categorical_columns if col != 'class']
     
     print("categorical_columns: ", categorical_columns)
     # Apply one-hot encoding to categorical columns
     if categorical_columns:
-        state["data"]["dataset"] = pd.get_dummies(state["data"]["dataset"], columns=categorical_columns, drop_first=True)
-    
+        state["data"]["dataset"] = pd.get_dummies(state["data"]["dataset"], columns=categorical_columns, drop_first=False)
 
     state["data"]["dataset"], state["data"]["dataset_test"] = \
         train_test_split(state["data"]["dataset"], test_size=0.2, random_state=42)
-    label = state["data"]["dataset"].columns[-1]
+    label = state["data"]["dataset"].columns["class"]
+    state["data"]["dataset"] = state["data"]["dataset"].drop(columns=[label])
     state["data"]["label"] = label
     state["data"]["model_params"] = {}
     print("downloaded!")
@@ -55,6 +55,7 @@ def load_dataset(state: MLAgentState) -> MLAgentState:
 
 def logistic_regression(state: MLAgentState) -> MLAgentState:
     model = LogisticRegression(**state["data"]["model_params"])
+    print("dataset: ", state["data"]["dataset"].head())
     model.fit(state["data"]["dataset"].drop(columns=[state['data']['label']]), state["data"]["dataset"][state['data']['label']])
     state["data"]["model"] = model
     return state

@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 from taiat.base import AgentGraphNodeSet, AgentData, State, TaiatQuery
 from taiat.builder import TaiatBuilder
 from taiat.engine import TaiatEngine
-from taiat.examples.ml_agents import (
+from examples.ml_agents import (
     agent_roster,
     llm,
     MLAgentState,
@@ -21,7 +21,7 @@ from taiat.examples.ml_agents import (
     predict_and_generate_report,
     results_analysis,
 )
-from taiat.examples.ml_output_matcher import MLOutputMatcher
+from examples.ml_output_matcher import MLOutputMatcher
 
 
 def main(): 
@@ -58,9 +58,7 @@ def main():
     print("dataset", matcher.get_dataset())
     print("outputs", matcher.get_outputs(""))
     engine = TaiatEngine(
-        llm_dict={
-            "llm": ChatOpenAI(model="gpt-4o-mini"),
-        },
+        llm=ChatOpenAI(model="gpt-4o-mini"),
         builder=builder,
         output_matcher=matcher,
     )
