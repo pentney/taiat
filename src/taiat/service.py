@@ -1,7 +1,7 @@
-
 from pydantic import BaseModel
 from taiat.taiat.engine import TaiatEngine
 from taiat.taiat.db import Database
+
 
 class TaiatService(BaseModel):
     engine: TaiatEngine = Field(default_factory=TaiatEngine)
@@ -12,4 +12,3 @@ class TaiatService(BaseModel):
         self.engine.run(query)
         self.db.update_row(query)
         return query
-

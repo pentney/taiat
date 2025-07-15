@@ -4,11 +4,14 @@ from taiat.base import OutputMatcher, AgentData
 
 UNKNOWN_OUTPUT = "<taiat_unknown_output>"
 
+
 class UnknownOutputException(Exception):
     """
     Exception raised when an unknown output is returned from the matcher.
     """
+
     pass
+
 
 class GenericMatcher(OutputMatcher):
     """
@@ -44,6 +47,7 @@ Request:
 {request}
 
 """
+
     def __init__(self, llm: BaseChatModel, outputs: list[AgentData | dict]):
         """
         Initialize the matcher with a list of output names.
@@ -52,7 +56,7 @@ Request:
         self.output_names = []
         for output in outputs:
             if isinstance(output, dict):
-                output = AgentData(**output)            
+                output = AgentData(**output)
             output_desc = f"{output.name} ..."
             if output.parameters:
                 for k, v in output.parameters.items():
@@ -67,7 +71,7 @@ Request:
         prompt = self.generic_output_matcher_prompt.format(
             request=query,
             outputs="\n".join(self.output_names),
-            unknown_output=UNKNOWN_OUTPUT
+            unknown_output=UNKNOWN_OUTPUT,
         )
         response = self.llm.invoke(
             prompt,
@@ -91,5 +95,7 @@ Request:
                     for field in fields[1:]:
                         fields = field.split(":")
                         output_parameters[fields[0]] = fields[1]
-                output_list.append(AgentData(name=output_name, parameters=output_parameters))
+                output_list.append(
+                    AgentData(name=output_name, parameters=output_parameters)
+                )
         return output_list

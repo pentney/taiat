@@ -4,18 +4,29 @@ import pandas as pd
 from langchain_core.language_models.fake_chat_models import FakeChatModel
 
 from taiat.engine import TaiatEngine, OutputMatcher
-from taiat.builder import AgentData, TaiatBuilder, TaiatQuery, TAIAT_TERMINAL_NODE, State
+from taiat.builder import (
+    AgentData,
+    TaiatBuilder,
+    TaiatQuery,
+    TAIAT_TERMINAL_NODE,
+    State,
+)
 from test_agents import TestNodeSet, TestNodeSetWithParams
+
 
 class DummyModel(FakeChatModel):
     pass
 
+
 class SimpleOutputMatcher(OutputMatcher):
     def get_outputs(self, query: str) -> list[AgentData]:
-        return [AgentData(
-            name="four_summary",
-            parameters={},
-        )]
+        return [
+            AgentData(
+                name="four_summary",
+                parameters={},
+            )
+        ]
+
 
 class TestGraph(unittest.TestCase):
     def _build_graph(self, node_set):
@@ -32,8 +43,16 @@ class TestGraph(unittest.TestCase):
         _, graph = self._build_graph(TestNodeSet)
         assert graph is not None
         nodes = graph.get_graph().nodes
-        expected_nodes = ["__start__", "one_analysis", "two_analysis", "three_analysis",
-                          "four_analysis", "four_summary", TAIAT_TERMINAL_NODE, "__end__"]
+        expected_nodes = [
+            "__start__",
+            "one_analysis",
+            "two_analysis",
+            "three_analysis",
+            "four_analysis",
+            "four_summary",
+            TAIAT_TERMINAL_NODE,
+            "__end__",
+        ]
         assert len(nodes) == len(expected_nodes)
         for node in nodes.keys():
             assert node in expected_nodes
@@ -70,9 +89,12 @@ class TestGraph(unittest.TestCase):
             data={
                 "dataset": AgentData(
                     name="dataset",
-                    data=pd.DataFrame({
-                    "id": [1, 2, 3],
-                })),
+                    data=pd.DataFrame(
+                        {
+                            "id": [1, 2, 3],
+                        }
+                    ),
+                ),
             },
         )
         state = engine.run(state)
@@ -94,9 +116,12 @@ class TestGraph(unittest.TestCase):
             data={
                 "dataset": AgentData(
                     name="dataset",
-                    data=pd.DataFrame({
-                    "id": [1, 2, 3],
-                })),
+                    data=pd.DataFrame(
+                        {
+                            "id": [1, 2, 3],
+                        }
+                    ),
+                ),
             },
         )
         state = engine.run(state)

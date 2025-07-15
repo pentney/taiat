@@ -8,15 +8,15 @@ import time
 from langgraph.graph import START
 
 
-
 class TaiatManager:
-    def __init__(self,
-                 node_set: AgentGraphNodeSet,
-                 reverse_plan_edges: dict[str, list[str]],
-                 wait_interval: int = 5,
-                 verbose: bool = False,
-                 metrics: Optional[TaiatMetrics] = None,
-        ):
+    def __init__(
+        self,
+        node_set: AgentGraphNodeSet,
+        reverse_plan_edges: dict[str, list[str]],
+        wait_interval: int = 5,
+        verbose: bool = False,
+        metrics: Optional[TaiatMetrics] = None,
+    ):
         self.interval = wait_interval
         self.node_set = node_set
         self.reverse_plan_edges = reverse_plan_edges
@@ -32,19 +32,17 @@ class TaiatManager:
         self.verbose = verbose
         self.metrics = metrics
 
-    def make_router_function(
-            self,
-            node) -> Callable:
+    def make_router_function(self, node) -> Callable:
         return partial(
             self.router_function,
             node=node,
         )
 
     def router_function(
-            self,
-            state : State,
-            node: str,
-        ) -> str | None:
+        self,
+        state: State,
+        node: str,
+    ) -> str | None:
         with self.status_lock:
             self.output_status[node] = "done"
         if self.verbose:
@@ -66,14 +64,19 @@ class TaiatManager:
                         self.metrics[neighbor]["calls"] += 1
                     return neighbor
                 else:
-                    if all(
-                        self.output_status[back_neighbor] == "done" \
-                        for back_neighbor in back_neighbors) and \
-                        self.output_status[neighbor] == "pending":
+                    if (
+                        all(
+                            self.output_status[back_neighbor] == "done"
+                            for back_neighbor in back_neighbors
+                        )
+                        and self.output_status[neighbor] == "pending"
+                    ):
                         # This node is ready to run.
                         with self.status_lock:
                             if self.verbose:
-                                print(f"running {neighbor}, whose needs {back_neighbors} are now satisfied, from {node}")
+                                print(
+                                    f"running {neighbor}, whose needs {back_neighbors} are now satisfied, from {node}"
+                                )
                             self.output_status[neighbor] = "running"
                         if self.metrics is not None:
                             self.metrics[neighbor]["calls"] += 1
@@ -85,7 +88,9 @@ class TaiatManager:
                         for back_neighbor in back_neighbors:
                             if self.output_status[back_neighbor] == "pending":
                                 neighbor = back_neighbor
-                                next_neighbors = self.reverse_plan_edges.get(back_neighbor)
+                                next_neighbors = self.reverse_plan_edges.get(
+                                    back_neighbor
+                                )
                                 break
                         back_neighbors = next_neighbors
         # If we're here, we failed to find a next node to run, which means

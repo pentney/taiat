@@ -6,6 +6,7 @@ NODE_COUNTER_TYPES = [
     "successes",
 ]
 
+
 class TaiatMetrics:
     def __init__(self):
         self.node_counters = defaultdict(lambda: defaultdict(int))

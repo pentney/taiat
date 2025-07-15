@@ -1,25 +1,35 @@
-
 from copy import copy
 from typing import Callable, Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import StateGraph
 
-from taiat.base import State, FrozenAgentData, AgentGraphNodeSet, TaiatQuery, AgentData, OutputMatcher
+from taiat.base import (
+    State,
+    FrozenAgentData,
+    AgentGraphNodeSet,
+    TaiatQuery,
+    AgentData,
+    OutputMatcher,
+)
 from taiat.builder import TaiatBuilder
 from taiat.generic_matcher import GenericMatcher
 
+
 class TaiatEngine:
     def __init__(
-            self,
-            llm: BaseChatModel,
-            builder: TaiatBuilder,
-            output_matcher: OutputMatcher | None):
+        self,
+        llm: BaseChatModel,
+        builder: TaiatBuilder,
+        output_matcher: OutputMatcher | None,
+    ):
         self.llm = llm
         self.builder = builder
         if output_matcher is None:
             if self.builder.node_set is None or not self.builder.node_set.nodes:
-                raise ValueError("Node set is not created or empty. Run builder.build() with a node set first.")
+                raise ValueError(
+                    "Node set is not created or empty. Run builder.build() with a node set first."
+                )
             outputs = []
             for node in self.builder.node_set.nodes:
                 outputs.extend(node.outputs)
@@ -28,10 +38,7 @@ class TaiatEngine:
             self.output_matcher = output_matcher
 
     def get_plan(
-            self,
-            goal_outputs: list[AgentData], 
-            query: TaiatQuery,
-            verbose: bool = False
+        self, goal_outputs: list[AgentData], query: TaiatQuery, verbose: bool = False
     ) -> tuple[StateGraph, str]:
         graph, query.status, query.error = self.builder.get_plan(query, goal_outputs)
         if verbose:
@@ -41,9 +48,9 @@ class TaiatEngine:
         return graph, query.status
 
     def run(
-          self,
-          state: State,
-          ) -> State:
+        self,
+        state: State,
+    ) -> State:
         query = state["query"]
         self.goal_outputs = self.output_matcher.get_outputs(query.query)
         if self.goal_outputs is None:
@@ -61,4 +68,3 @@ class TaiatEngine:
         state = graph.invoke(state)
         query.status = "success"
         return state
-

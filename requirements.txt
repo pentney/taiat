@@ -1,5 +1,4 @@
 ipython>=8.34.0
-kaggle-datasets>=1.0.0
 kaggle>=1.5.11
 langgraph>=0.3.11
 langsmith>=0.3.15
