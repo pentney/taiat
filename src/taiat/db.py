@@ -7,6 +7,7 @@ from sqlalchemy import (
     Integer,
     BigInteger,
     String,
+    Boolean,
     MetaData,
     ForeignKey,
     insert,
@@ -59,6 +60,7 @@ taiat_query_table = Table(
     Column("status", String),
     Column("error", String),
     Column("path", ARRAY(JSONB)),
+    Column("visualize_graph", Boolean),
     Column("created_at", DateTime, server_default=func.now()),
 )
 
