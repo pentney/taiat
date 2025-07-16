@@ -67,6 +67,7 @@ class TaiatQuery(BaseModel):
     status: Optional[str] = None
     error: str = ""
     path: Optional[list[AgentGraphNode]] = None
+    visualize_graph: bool = False
 
     @classmethod
     def from_db_dict(db_dict: dict) -> "TaiatQuery":
@@ -80,6 +81,7 @@ class TaiatQuery(BaseModel):
             status=db_dict["status"],
             error=db_dict["error"],
             path=[AgentGraphNode(**node) for node in db_dict["path"]],
+            visualize_graph=db_dict.get("visualize_graph", False),
         )
 
     def as_db_dict(self) -> dict:
@@ -99,6 +101,7 @@ class TaiatQuery(BaseModel):
             "status": self.status,
             "error": self.error,
             "path": clean_path,
+            "visualize_graph": self.visualize_graph,
         }
 
 

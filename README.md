@@ -20,6 +20,29 @@ Taiat creates two different types of graphs:
 
 The primary difference between TAIAT and standard Langgraph is that TAIAT allows for the specification of constraints, such that each agent will be run when its dependencies have been satisfied - specifically, that inputs to the agent have been produced by agents that provide them as outputs. The selection of next task is handled by the TaiatManager, which looks for unfulfilled dependencies and selects the next agent to run to fulfill them.
 
+## Graph Visualization
+
+Taiat supports visualizing the dependency graph using Graphviz. To enable visualization:
+
+1. Set `visualize_graph=True` in your `TaiatQuery`
+2. The `TaiatEngine.run()` method will return a tuple `(state, visualization)` where `visualization` contains the DOT source code
+3. You can save the DOT code to a file and render it using Graphviz
+
+Example:
+```python
+query = TaiatQuery(query="your query here", visualize_graph=True)
+result = engine.run(state)
+
+if isinstance(result, tuple):
+    state, visualization = result
+    if visualization:
+        with open("graph.dot", "w") as f:
+            f.write(visualization)
+        # Render with: dot -Tpng graph.dot -o graph.png
+```
+
+See `examples/visualization_example.py` for a complete example.
+
 ## Query Database
 
 There is a simple postgres implementation of a query/output DB interface for collecting query data and saving outputs, e.g.

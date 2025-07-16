@@ -66,6 +66,111 @@ class TaiatBuilder:
             return None
         return deps
 
+    def create_graph_visualization(
+        self, query: TaiatQuery, goal_outputs: list[AgentData]
+    ) -> Optional[str]:
+        """
+        Creates a graphviz visualization of the execution path for the specific query.
+        Returns the DOT source code as a string, or None if visualization cannot be created.
+        """
+        try:
+            import graphviz
+        except ImportError:
+            return None
+
+        # Use the query's path to show the actual execution sequence
+        if not query.path:
+            return None
+
+        dot = graphviz.Digraph(comment="Taiat Query Execution Path")
+        dot.attr(rankdir="TB")
+
+        # Add nodes for the execution path
+        for i, node in enumerate(query.path):
+            label = node.description or node.name
+            dot.node(node.name, f"{i + 1}. {label}", shape="box")
+
+        # Add edges to show the execution sequence with input/output data
+        for i in range(len(query.path) - 1):
+            current_node = query.path[i]
+            next_node = query.path[i + 1]
+
+            # Find outputs from current node that are inputs to next node
+            edge_outputs = []
+            for output in current_node.outputs:
+                for input_data in next_node.inputs:
+                    if output.name == input_data.name:
+                        # Check if parameters match - input parameters should be a subset of output parameters
+                        # If input has no parameters, it should match any output with the same name
+                        if (
+                            not input_data.parameters
+                            or input_data.parameters.items()
+                            <= output.parameters.items()
+                        ):
+                            edge_outputs.append(output.name)
+
+            # Create edge label with the data flow
+            if edge_outputs:
+                edge_label = f"→ {', '.join(edge_outputs)}"
+                # Use green color for successful data flow
+                dot.edge(
+                    current_node.name,
+                    next_node.name,
+                    label=edge_label,
+                    color="green",
+                    fontcolor="green",
+                )
+            else:
+                # Use red if no clear data flow (potential issue)
+                dot.edge(
+                    current_node.name, next_node.name, color="red", fontcolor="red"
+                )
+
+        # Show final outputs from the last node(s) in the execution path
+        if query.path:
+            # Find all requested outputs and which nodes produce them
+            requested_outputs = {}
+            for goal_output in goal_outputs:
+                # Find which node in the execution path produces this output
+                for node in query.path:
+                    for output in node.outputs:
+                        if output.name == goal_output.name:
+                            # Check if parameters match
+                            if (
+                                not goal_output.parameters
+                                or goal_output.parameters.items()
+                                <= output.parameters.items()
+                            ):
+                                requested_outputs[goal_output.name] = node.name
+                                break
+                    if goal_output.name in requested_outputs:
+                        break
+
+            if requested_outputs:
+                # Add a special node to show final outputs
+                final_outputs_str = (
+                    f"Final Outputs: {', '.join(requested_outputs.keys())}"
+                )
+                dot.node(
+                    "final_outputs",
+                    final_outputs_str,
+                    shape="ellipse",
+                    style="filled",
+                    fillcolor="lightgreen",
+                )
+
+                # Add edges from the nodes that produce the final outputs
+                for output_name, producer_node in requested_outputs.items():
+                    dot.edge(
+                        producer_node,
+                        "final_outputs",
+                        label=f"→ {output_name}",
+                        color="green",
+                        fontcolor="green",
+                    )
+
+        return dot.source
+
     def build(
         self,
         node_set: AgentGraphNodeSet | list[dict],
