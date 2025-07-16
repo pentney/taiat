@@ -35,7 +35,11 @@ llm = ChatAnthropic(model="claude-3-5-sonnet-latest")
 
 class TaiatBuilder:
     def __init__(
-        self, llm: BaseChatModel, verbose: bool = False, add_metrics: bool = True
+        self,
+        llm: BaseChatModel,
+        verbose: bool = False,
+        add_metrics: bool = True,
+        agent_registry=None,
     ):
         self.llm = llm
         self.graph = None
@@ -43,6 +47,7 @@ class TaiatBuilder:
         self.data_dependence = defaultdict(dict)
         self.verbose = verbose
         self.add_metrics = add_metrics
+        self.agent_registry = agent_registry
 
     def source_match(self, name, parameters):
         if name in self.data_source:
@@ -190,6 +195,8 @@ class TaiatBuilder:
         self.graph_builder = StateGraph(State)
         self.graph_builder.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
         self.graph_builder.add_edge(TAIAT_TERMINAL_NODE, END)
+        # Use a local TaiatManager for function resolution
+        local_manager = TaiatManager(nodes, {}, agent_registry=self.agent_registry)
         for node in nodes.nodes:
             for output in node.outputs:
                 output_json = json.dumps(output.parameters)
@@ -204,7 +211,16 @@ class TaiatBuilder:
                 self.data_dependence.setdefault(output.name, {}).setdefault(
                     json.dumps(output.parameters), []
                 ).extend(node.inputs)
-            self.graph_builder.add_node(node.name, node.function)
+
+            # Always resolve function at runtime
+            def make_node_func(n):
+                def node_func(state):
+                    func = local_manager.get_node_function(n)
+                    return func(state)
+
+                return node_func
+
+            self.graph_builder.add_node(node.name, make_node_func(node))
             if node.name in terminal_nodes:
                 self.graph_builder.add_edge(node.name, TAIAT_TERMINAL_NODE)
         for input in inputs:
@@ -317,7 +333,6 @@ class TaiatBuilder:
                 error = f"Graph error: bad intermediate data {output} found"
                 return (None, status, error)
             elif src.name not in plan_nodes:
-                # graph_builder.add_node(src.name, src.function)
                 plan_nodes[src.name] = src
         for src, dest in self.graph_builder.edges:
             if ((src in plan_nodes or src is START) and dest in plan_nodes) or (
@@ -327,13 +342,24 @@ class TaiatBuilder:
                 plan_edges[src].append(dest)
 
         self.manager = TaiatManager(
-            self.node_set, reverse_plan_edges, verbose=self.verbose
+            self.node_set,
+            reverse_plan_edges,
+            verbose=self.verbose,
+            agent_registry=self.agent_registry,
         )
         # Add a conditional edge for every node backwards from the goal.
         for node_name, node in plan_nodes.items():
             router = self.manager.make_router_function(node_name)
             if node_name != START:
-                graph_builder.add_node(node.name, node.function)
+
+                def make_node_func(n):
+                    def node_func(state):
+                        func = self.manager.get_node_function(n)
+                        return func(state)
+
+                    return node_func
+
+                graph_builder.add_node(node.name, make_node_func(node))
             graph_builder.add_conditional_edges(node.name, router)
         query.all_outputs = [output.name for output in all_needed_outputs]
         graph_builder.add_edge(TAIAT_TERMINAL_NODE, END)

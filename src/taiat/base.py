@@ -1,5 +1,5 @@
 import operator
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 from typing_extensions import Annotated, TypedDict
 
 from pydantic import BaseModel, field_validator, ConfigDict
@@ -32,7 +32,8 @@ class FrozenAgentData(AgentData):
 class AgentGraphNode(BaseModel):
     name: str
     description: Optional[str] = None
-    function: Optional[Callable] = None
+    # The function can be a string (for LLM/registry workflows) or a callable (for execution)
+    function: Optional[Union[str, Callable]] = None
     inputs: list[AgentData]
     outputs: list[AgentData]
 

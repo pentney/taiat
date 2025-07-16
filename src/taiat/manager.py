@@ -16,10 +16,12 @@ class TaiatManager:
         wait_interval: int = 5,
         verbose: bool = False,
         metrics: Optional[TaiatMetrics] = None,
+        agent_registry=None,  # Optional AgentRegistry for function resolution
     ):
         self.interval = wait_interval
         self.node_set = node_set
         self.reverse_plan_edges = reverse_plan_edges
+        self.agent_registry = agent_registry
         # Build reverse graph to find next node to run.
         self.plan_edges = {k.name: [] for k in self.node_set.nodes + [START_NODE]}
         for node, neighbors in reverse_plan_edges.items():
@@ -37,6 +39,28 @@ class TaiatManager:
             self.router_function,
             node=node,
         )
+
+    def get_node_function(self, node: AgentGraphNode):
+        """
+        Return the callable for a node. If node.function is a string, look it up in the agent registry.
+        """
+        if callable(node.function):
+            return node.function
+        elif isinstance(node.function, str):
+            if self.agent_registry is not None:
+                func = self.agent_registry.get(node.function)
+                if func is not None:
+                    return func
+                else:
+                    raise ValueError(
+                        f"Function '{node.function}' not found in agent registry."
+                    )
+            else:
+                raise ValueError(
+                    f"Agent registry not provided, but node.function is a string: {node.function}"
+                )
+        else:
+            raise ValueError(f"Node {node.name} has no valid function.")
 
     def router_function(
         self,
