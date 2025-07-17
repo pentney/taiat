@@ -117,6 +117,9 @@ class State(TypedDict):
 
 TAIAT_TERMINAL_NODE = "__terminal__"
 
+# Define START_NODE here to avoid circular imports
+START_NODE = AgentGraphNode(name="__start__", function=None, inputs=[], outputs=[])
+
 
 def taiat_terminal_node(state: State) -> State:
     """

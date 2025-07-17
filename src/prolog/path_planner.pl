@@ -90,8 +90,7 @@ required_nodes(Nodes, DesiredOutputs, RequiredNodes) :-
 % Recursively collect required nodes from a list of agent_data outputs
 required_nodes_from_outputs(_, [], Acc, Acc).
 required_nodes_from_outputs(Nodes, [Output|Rest], Acc, RequiredNodes) :-
-    agent_data_name(Output, OutputName),
-    nodes_producing_output_name(Nodes, OutputName, [ProducingNode|_]),
+    nodes_producing_output(Nodes, Output, [ProducingNode|_]),
     required_nodes_from_node(Nodes, ProducingNode, Acc, NewAcc),
     required_nodes_from_outputs(Nodes, Rest, NewAcc, RequiredNodes).
 required_nodes_from_outputs(Nodes, [_|Rest], Acc, RequiredNodes) :-

@@ -13,9 +13,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from taiat.base import AgentGraphNodeSet, AgentGraphNode, AgentData
-from prolog.optimized_prolog_interface import (
-    plan_taiat_path_global_optimized,
-    OptimizedPrologPathPlanner,
+from prolog.taiat_path_planner import (
+    TaiatPathPlanner,
+    plan_taiat_path,
+    plan_taiat_path_global,
+    get_global_planner,
+    clear_global_planner,
 )
 
 
@@ -293,7 +296,7 @@ def test_simple_path():
         )
     ]
 
-    execution_path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
 
     if execution_path:
         print(f"✅ Simple path planning successful: {execution_path}")
@@ -320,7 +323,7 @@ def test_complex_path():
         )
     ]
 
-    execution_path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
 
     if execution_path:
         print(f"✅ Complex path planning successful: {execution_path}")
@@ -350,7 +353,7 @@ def test_multiple_outputs():
         ),
     ]
 
-    execution_path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
 
     if execution_path:
         print(f"✅ Multiple outputs planning successful: {execution_path}")
@@ -373,7 +376,7 @@ def test_invalid_output():
         )
     ]
 
-    execution_path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
 
     if execution_path is None:
         print("✅ Correctly handled invalid output")
@@ -396,7 +399,7 @@ def test_convenience_functions():
     ]
 
     # Test the global optimized function
-    execution_path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
 
     if execution_path:
         print("✅ Global optimized function works")
@@ -410,7 +413,7 @@ def test_prolog_unit_tests():
 
     try:
         # Test the planner directly
-        planner = OptimizedPrologPathPlanner()
+        planner = TaiatPathPlanner()
         print("✅ Prolog planner initialization successful")
 
         # Test with simple data
@@ -437,7 +440,7 @@ def test_prolog_unit_tests():
 def test_param_subset_match():
     """Test parameter subset matching (should succeed)."""
     from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+    from prolog.taiat_path_planner import plan_taiat_path_global
 
     node = AgentGraphNode(
         name="model_node",
@@ -461,7 +464,7 @@ def test_param_subset_match():
             data=None,
         )
     ]
-    path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    path = plan_taiat_path_global(node_set, desired_outputs)
     if path == ["model_node"]:
         print("✅ test_param_subset_match passed")
     else:
@@ -471,7 +474,7 @@ def test_param_subset_match():
 def test_param_conflict():
     """Test parameter conflict (should fail)."""
     from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+    from prolog.taiat_path_planner import plan_taiat_path_global
 
     node = AgentGraphNode(
         name="model_node",
@@ -495,7 +498,7 @@ def test_param_conflict():
             data=None,
         )
     ]
-    path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    path = plan_taiat_path_global(node_set, desired_outputs)
     if not path:
         print("✅ test_param_conflict passed")
     else:
@@ -505,7 +508,7 @@ def test_param_conflict():
 def test_param_empty():
     """Test empty input parameters (should succeed)."""
     from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+    from prolog.taiat_path_planner import plan_taiat_path_global
 
     node = AgentGraphNode(
         name="model_node",
@@ -524,7 +527,7 @@ def test_param_empty():
     desired_outputs = [
         AgentData(name="model", parameters={}, description="", data=None)
     ]
-    path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    path = plan_taiat_path_global(node_set, desired_outputs)
     if path == ["model_node"]:
         print("✅ test_param_empty passed")
     else:
@@ -534,7 +537,7 @@ def test_param_empty():
 def test_name_mismatch():
     """Test name mismatch (should fail)."""
     from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+    from prolog.taiat_path_planner import plan_taiat_path_global
 
     node = AgentGraphNode(
         name="model_node",
@@ -558,7 +561,7 @@ def test_name_mismatch():
             data=None,
         )
     ]
-    path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    path = plan_taiat_path_global(node_set, desired_outputs)
     if not path:
         print("✅ test_name_mismatch passed")
     else:
@@ -568,7 +571,7 @@ def test_name_mismatch():
 def main():
     """Run all tests."""
     print("=" * 60)
-    print("GLOBAL OPTIMIZED PROLOG PATH PLANNER TESTS")
+    print("TAIAT PATH PLANNER TESTS")
     print("=" * 60)
 
     test_simple_path()

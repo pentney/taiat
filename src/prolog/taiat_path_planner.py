@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Optimized Prolog Path Planner Interface
+Taiat Path Planner Interface
 
-This version compiles the path planner once and reuses it for all queries,
-eliminating the 93% compilation overhead.
+This module provides the standard Taiat path planner that uses Prolog
+for optimal execution path determination.
 """
 
 import os
@@ -16,19 +16,17 @@ from pathlib import Path
 from taiat.base import AgentGraphNodeSet, AgentGraphNode, AgentData
 
 
-class OptimizedPrologPathPlanner:
+class TaiatPathPlanner:
     """
-    Optimized Prolog Path Planner that compiles once and reuses.
+    Taiat Path Planner that uses Prolog for optimal path planning.
 
-    This eliminates the 93% compilation overhead by:
-    1. Compiling the path planner once at initialization
-    2. Creating only the data portion for each query
-    3. Reusing the compiled program for all queries
+    This planner compiles the Prolog path planner once and reuses it for all queries,
+    providing efficient execution path determination.
     """
 
     def __init__(self, prolog_script_path: Optional[str] = None, max_nodes: int = 200):
         """
-        Initialize the Optimized Prolog Path Planner.
+        Initialize the Taiat Path Planner.
 
         Args:
             prolog_script_path: Path to the Prolog script file. If None, uses default path.
@@ -138,12 +136,13 @@ main :-
         Returns:
             Prolog representation as a string
         """
-        # Convert parameters to a simple format for Prolog
-        params_str = (
-            "[]"
-            if not agent_data.parameters
-            else str(list(agent_data.parameters.items()))
-        )
+        # Convert parameters to Prolog format with hyphens
+        if not agent_data.parameters:
+            params_str = "[]"
+        else:
+            param_list = [f"{k}-{v}" for k, v in agent_data.parameters.items()]
+            params_str = f"[{', '.join(param_list)}]"
+
         # Escape single quotes in description
         description = (
             agent_data.description.replace("'", "\\'") if agent_data.description else ""
@@ -291,11 +290,11 @@ main :-
             pass
 
 
-def plan_taiat_path_optimized(
+def plan_taiat_path(
     node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
 ) -> Optional[List[str]]:
     """
-    Plan Taiat execution path using optimized Prolog.
+    Plan Taiat execution path using Prolog.
 
     Args:
         node_set: The AgentGraphNodeSet containing all available nodes
@@ -304,27 +303,35 @@ def plan_taiat_path_optimized(
     Returns:
         List of node names in execution order, or None if planning failed
     """
-    planner = OptimizedPrologPathPlanner()
+    planner = TaiatPathPlanner()
     return planner.plan_path(node_set, desired_outputs)
 
 
 # Global planner instance for reuse (avoids recompilation)
-_global_optimized_planner = None
+_global_planner = None
 
 
-def get_global_optimized_planner() -> OptimizedPrologPathPlanner:
-    """Get or create a global optimized planner instance."""
-    global _global_optimized_planner
-    if _global_optimized_planner is None:
-        _global_optimized_planner = OptimizedPrologPathPlanner()
-    return _global_optimized_planner
+def get_global_planner() -> TaiatPathPlanner:
+    """Get or create a global planner instance."""
+    global _global_planner
+    if _global_planner is None:
+        _global_planner = TaiatPathPlanner()
+    return _global_planner
 
 
-def plan_taiat_path_global_optimized(
+def clear_global_planner():
+    """Clear the global planner cache to force recompilation."""
+    global _global_planner
+    if _global_planner is not None:
+        del _global_planner
+        _global_planner = None
+
+
+def plan_taiat_path_global(
     node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
 ) -> Optional[List[str]]:
     """
-    Plan execution path using the global optimized Prolog engine.
+    Plan execution path using the global Prolog engine.
 
     This reuses the same compiled executable across multiple calls,
     eliminating both compilation and process startup overhead.
@@ -336,5 +343,5 @@ def plan_taiat_path_global_optimized(
     Returns:
         List of node names in execution order, or None if planning failed
     """
-    planner = get_global_optimized_planner()
+    planner = get_global_planner()
     return planner.plan_path(node_set, desired_outputs)

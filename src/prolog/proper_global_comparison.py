@@ -19,7 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from taiat.base import AgentGraphNodeSet, AgentGraphNode, AgentData, TaiatQuery
 from taiat.builder import TaiatBuilder
-from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+from prolog.taiat_path_planner import plan_taiat_path_global
 
 
 class DummyLLM:
@@ -212,7 +212,7 @@ def test_global_optimized_prolog(
         try:
             # Time the path planning (reuses the same planner instance)
             start_time = time.time()
-            execution_path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+            execution_path = plan_taiat_path_global(node_set, desired_outputs)
             end_time = time.time()
 
             execution_time = end_time - start_time
