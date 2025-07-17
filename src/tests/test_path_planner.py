@@ -568,6 +568,558 @@ def test_name_mismatch():
         print(f"❌ test_name_mismatch failed: {path}")
 
 
+def test_parameter_constraints_for_intermediate_nodes():
+    """
+    Test that parameter constraints are respected for intermediate nodes.
+
+    This test verifies that when a node requires input X with parameters {"A":"B"},
+    the planner will not select a node that produces output X with parameters {"A":"C"}.
+    """
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.taiat_path_planner import plan_taiat_path_global
+
+    # Define dummy functions for the test nodes
+    def dummy_function(state):
+        return state
+
+    # Create test nodes
+    producer_wrong_params = AgentGraphNode(
+        name="producer_wrong_params",
+        description="Produces output X with wrong parameters",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "C"},  # Wrong parameter value
+                description="Output X with wrong parameters",
+                data=None,
+            )
+        ],
+    )
+
+    producer_correct_params = AgentGraphNode(
+        name="producer_correct_params",
+        description="Produces output X with correct parameters",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "B"},  # Correct parameter value
+                description="Output X with correct parameters",
+                data=None,
+            )
+        ],
+    )
+
+    consumer = AgentGraphNode(
+        name="consumer",
+        description="Consumes input X with specific parameters",
+        function=dummy_function,
+        inputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "B"},  # Requires specific parameter value
+                description="Input X with specific parameters",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    # Create node set
+    node_set = AgentGraphNodeSet(
+        nodes=[producer_wrong_params, producer_correct_params, consumer]
+    )
+
+    # Define desired outputs
+    desired_outputs = [
+        AgentData(
+            name="final_output",
+            parameters={},
+            description="Final output",
+            data=None,
+        )
+    ]
+
+    # Plan execution path
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
+
+    # Debug output
+    print(f"Intermediate node execution path: {execution_path}")
+
+    # Verify the path includes the correct producer and excludes the wrong one
+    assert execution_path is not None, "Path planning should succeed"
+
+    # The path should include producer_correct_params but NOT producer_wrong_params
+    assert "producer_correct_params" in execution_path, (
+        "Path should include the correct producer"
+    )
+    assert "producer_wrong_params" not in execution_path, (
+        "Path should NOT include the wrong producer"
+    )
+    assert "consumer" in execution_path, "Path should include the consumer"
+
+    # Verify the execution order is correct
+    correct_producer_index = execution_path.index("producer_correct_params")
+    consumer_index = execution_path.index("consumer")
+    assert correct_producer_index < consumer_index, (
+        "Producer should come before consumer"
+    )
+
+    print("✓ Parameter constraints for intermediate nodes test passed")
+
+
+def test_parameter_constraints_with_multiple_options():
+    """
+    Test parameter constraints when multiple nodes can produce the same output type
+    but with different parameters.
+    """
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.taiat_path_planner import plan_taiat_path_global
+
+    # Define dummy functions for the test nodes
+    def dummy_function(state):
+        return state
+
+    # Create multiple producers with different parameter combinations
+    producer_1 = AgentGraphNode(
+        name="producer_1",
+        description="Produces output Y with parameters {type: 'A', version: '1'}",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="Y",
+                parameters={"type": "A", "version": "1"},
+                description="Output Y with type A, version 1",
+                data=None,
+            )
+        ],
+    )
+
+    producer_2 = AgentGraphNode(
+        name="producer_2",
+        description="Produces output Y with parameters {type: 'B', version: '1'}",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="Y",
+                parameters={"type": "B", "version": "1"},
+                description="Output Y with type B, version 1",
+                data=None,
+            )
+        ],
+    )
+
+    producer_3 = AgentGraphNode(
+        name="producer_3",
+        description="Produces output Y with parameters {type: 'A', version: '2'}",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="Y",
+                parameters={"type": "A", "version": "2"},
+                description="Output Y with type A, version 2",
+                data=None,
+            )
+        ],
+    )
+
+    # Consumer that requires specific parameters
+    consumer = AgentGraphNode(
+        name="consumer",
+        description="Consumes input Y with specific parameters",
+        function=dummy_function,
+        inputs=[
+            AgentData(
+                name="Y",
+                parameters={"type": "A", "version": "1"},  # Requires exact match
+                description="Input Y with specific parameters",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    # Create node set
+    node_set = AgentGraphNodeSet(nodes=[producer_1, producer_2, producer_3, consumer])
+
+    # Define desired outputs
+    desired_outputs = [
+        AgentData(
+            name="final_output",
+            parameters={},
+            description="Final output",
+            data=None,
+        )
+    ]
+
+    # Plan execution path
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
+
+    # Debug output
+    print(f"Multiple options execution path: {execution_path}")
+
+    # Verify the path includes only the correct producer
+    assert execution_path is not None, "Path planning should succeed"
+
+    # Should include producer_1 (exact match) but not the others
+    assert "producer_1" in execution_path, (
+        "Path should include producer_1 (exact match)"
+    )
+    assert "producer_2" not in execution_path, (
+        "Path should NOT include producer_2 (wrong type)"
+    )
+    assert "producer_3" not in execution_path, (
+        "Path should NOT include producer_3 (wrong version)"
+    )
+    assert "consumer" in execution_path, "Path should include the consumer"
+
+    # Verify execution order
+    producer_1_index = execution_path.index("producer_1")
+    consumer_index = execution_path.index("consumer")
+    assert producer_1_index < consumer_index, "Producer should come before consumer"
+
+    print("✓ Parameter constraints with multiple options test passed")
+
+
+def test_parameter_constraints_with_superset_matching():
+    """
+    Test that parameter constraints work correctly with superset matching.
+    A node that produces output with additional parameters should still match
+    if it includes all the required parameters.
+    """
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.taiat_path_planner import plan_taiat_path_global
+
+    # Define dummy functions for the test nodes
+    def dummy_function(state):
+        return state
+
+    # Producer with additional parameters (superset)
+    producer_superset = AgentGraphNode(
+        name="producer_superset",
+        description="Produces output Z with additional parameters",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="Z",
+                parameters={"type": "A", "version": "1", "extra": "value"},  # Superset
+                description="Output Z with additional parameters",
+                data=None,
+            )
+        ],
+    )
+
+    # Consumer that requires only a subset of parameters
+    consumer = AgentGraphNode(
+        name="consumer",
+        description="Consumes input Z with subset of parameters",
+        function=dummy_function,
+        inputs=[
+            AgentData(
+                name="Z",
+                parameters={
+                    "type": "A",
+                    "version": "1",
+                },  # Subset of producer's parameters
+                description="Input Z with subset of parameters",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    # Create node set
+    node_set = AgentGraphNodeSet(nodes=[producer_superset, consumer])
+
+    # Define desired outputs
+    desired_outputs = [
+        AgentData(
+            name="final_output",
+            parameters={},
+            description="Final output",
+            data=None,
+        )
+    ]
+
+    # Plan execution path
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
+
+    # Debug output
+    print(f"Superset matching execution path: {execution_path}")
+
+    # Verify the path includes the producer with superset parameters
+    assert execution_path is not None, "Path planning should succeed"
+    assert "producer_superset" in execution_path, (
+        "Path should include producer with superset parameters"
+    )
+    assert "consumer" in execution_path, "Path should include the consumer"
+
+    # Verify execution order
+    producer_index = execution_path.index("producer_superset")
+    consumer_index = execution_path.index("consumer")
+    assert producer_index < consumer_index, "Producer should come before consumer"
+
+    print("✓ Parameter constraints with superset matching test passed")
+
+
+def test_parameter_constraints_no_match():
+    """
+    Test that path planning fails when no node can produce the required parameters.
+    """
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.taiat_path_planner import plan_taiat_path_global
+
+    # Define dummy functions for the test nodes
+    def dummy_function(state):
+        return state
+
+    # Producer with completely different parameters
+    producer_wrong = AgentGraphNode(
+        name="producer_wrong",
+        description="Produces output W with wrong parameters",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="W",
+                parameters={"type": "X", "version": "1"},  # Completely different
+                description="Output W with wrong parameters",
+                data=None,
+            )
+        ],
+    )
+
+    # Consumer that requires specific parameters
+    consumer = AgentGraphNode(
+        name="consumer",
+        description="Consumes input W with specific parameters",
+        function=dummy_function,
+        inputs=[
+            AgentData(
+                name="W",
+                parameters={"type": "Y", "version": "2"},  # No match available
+                description="Input W with specific parameters",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    # Create node set
+    node_set = AgentGraphNodeSet(nodes=[producer_wrong, consumer])
+
+    # Define desired outputs
+    desired_outputs = [
+        AgentData(
+            name="final_output",
+            parameters={},
+            description="Final output",
+            data=None,
+        )
+    ]
+
+    # Plan execution path - should fail
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
+
+    # Debug output
+    print(f"No match execution path: {execution_path}")
+
+    # Verify that path planning fails when no suitable producer exists
+    assert execution_path is None, (
+        "Path planning should fail when no suitable producer exists"
+    )
+
+    print("✓ Parameter constraints no match test passed")
+
+
+def test_parameter_matching_debug():
+    """
+    Debug test to understand what's happening with parameter matching.
+    """
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.taiat_path_planner import TaiatPathPlanner
+
+    # Define dummy functions for the test nodes
+    def dummy_function(state):
+        return state
+
+    # Create a simple test case
+    producer = AgentGraphNode(
+        name="producer",
+        description="Produces output X with parameters {A: 'C'}",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "C"},
+                description="Output X with A=C",
+                data=None,
+            )
+        ],
+    )
+
+    consumer = AgentGraphNode(
+        name="consumer",
+        description="Consumes input X with parameters {A: 'B'}",
+        function=dummy_function,
+        inputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "B"},
+                description="Input X with A=B",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    # Create node set
+    node_set = AgentGraphNodeSet(nodes=[producer, consumer])
+
+    # Print the Prolog representation
+    planner = TaiatPathPlanner()
+    node_set_str = planner._node_set_to_prolog(node_set)
+    print(f"Node set Prolog representation:")
+    print(node_set_str)
+
+    # Test the agent_data_to_prolog conversion
+    input_data = AgentData(name="X", parameters={"A": "B"}, description="", data=None)
+    output_data = AgentData(name="X", parameters={"A": "C"}, description="", data=None)
+
+    input_str = planner._agent_data_to_prolog(input_data)
+    output_str = planner._agent_data_to_prolog(output_data)
+
+    print(f"Input Prolog: {input_str}")
+    print(f"Output Prolog: {output_str}")
+
+    print("✓ Parameter matching debug test completed")
+
+
+def test_direct_parameter_matching():
+    """
+    Test parameter matching directly by creating a minimal Prolog query.
+    """
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.taiat_path_planner import TaiatPathPlanner
+
+    # Define dummy functions for the test nodes
+    def dummy_function(state):
+        return state
+
+    # Create a simple test case with only one producer and one consumer
+    # The producer has wrong parameters, so the path should fail
+    producer_wrong = AgentGraphNode(
+        name="producer_wrong",
+        description="Produces output X with wrong parameters",
+        function=dummy_function,
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "C"},  # Wrong parameter value
+                description="Output X with wrong parameters",
+                data=None,
+            )
+        ],
+    )
+
+    consumer = AgentGraphNode(
+        name="consumer",
+        description="Consumes input X with specific parameters",
+        function=dummy_function,
+        inputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "B"},  # Requires specific parameter value
+                description="Input X with specific parameters",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    # Create node set with only the wrong producer
+    node_set = AgentGraphNodeSet(nodes=[producer_wrong, consumer])
+
+    # Define desired outputs
+    desired_outputs = [
+        AgentData(
+            name="final_output",
+            parameters={},
+            description="Final output",
+            data=None,
+        )
+    ]
+
+    # Plan execution path - should fail because no suitable producer exists
+    from prolog.taiat_path_planner import plan_taiat_path_global
+
+    execution_path = plan_taiat_path_global(node_set, desired_outputs)
+
+    print(f"Direct parameter matching test execution path: {execution_path}")
+
+    # This should fail because there's no producer with the correct parameters
+    if execution_path is None:
+        print(
+            "✓ Direct parameter matching test passed - correctly failed when no suitable producer exists"
+        )
+    else:
+        print(
+            f"❌ Direct parameter matching test failed - found path {execution_path} when it should have failed"
+        )
+        assert False, "Path planning should fail when no suitable producer exists"
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -584,6 +1136,12 @@ def main():
     test_param_conflict()
     test_param_empty()
     test_name_mismatch()
+    test_parameter_constraints_for_intermediate_nodes()
+    test_parameter_constraints_with_multiple_options()
+    test_parameter_constraints_with_superset_matching()
+    test_parameter_constraints_no_match()
+    test_parameter_matching_debug()
+    test_direct_parameter_matching()
 
     print("\n" + "=" * 60)
     print("All tests completed!")

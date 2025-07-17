@@ -44,13 +44,38 @@ node_produces_output(Node, Output) :-
     agent_data_match(Output, ProducedOutput).
 
 % Find all nodes that produce a specific output (with parameter matching)
+% When multiple nodes can produce the same output, prefer the most specific match
 nodes_producing_output(Nodes, Output, ProducingNodes) :-
     findall(Node, 
         (member(Node, Nodes), 
          node_outputs(Node, Outputs),
          member(ProducedOutput, Outputs),
          agent_data_match(Output, ProducedOutput)),
-        ProducingNodes).
+        AllProducingNodes),
+    % If multiple nodes can produce this output, choose the most specific one
+    (AllProducingNodes = [] ->
+        ProducingNodes = []
+    ;   AllProducingNodes = [SingleNode] ->
+        ProducingNodes = [SingleNode]
+    ;   % Multiple nodes - choose the most specific match
+        find_most_specific_producer(Nodes, Output, AllProducingNodes, ProducingNodes)
+    ).
+
+% Find the most specific producer among multiple candidates
+find_most_specific_producer(Nodes, DesiredOutput, Candidates, [BestProducer]) :-
+    findall(Score-Node,
+        (member(Node, Candidates),
+         node_outputs(Node, Outputs),
+         member(ProducedOutput, Outputs),
+         agent_data_match(DesiredOutput, ProducedOutput),
+         % Calculate specificity score
+         agent_data_parameters(DesiredOutput, DesiredParams),
+         agent_data_parameters(ProducedOutput, ProducedParams),
+         calculate_specificity_score(DesiredParams, ProducedParams, Score)),
+        ScoredNodes),
+    % Sort by score (highest first) and take the first
+    sort(ScoredNodes, SortedScoredNodes),
+    reverse(SortedScoredNodes, [BestScore-BestProducer|_]).
 
 % Find all nodes that produce a specific output name (legacy - for backward compatibility)
 nodes_producing_output_name(Nodes, OutputName, ProducingNodes) :-
@@ -69,13 +94,44 @@ nodes_consuming_input_name(Nodes, InputName, ConsumingNodes) :-
         ConsumingNodes).
 
 % Get all dependencies for a node (nodes that produce its inputs with parameter matching)
+% When multiple nodes can produce the same input, prefer the most specific match
 node_dependencies(Nodes, Node, Dependencies) :-
     node_inputs(Node, Inputs),
     findall(DependencyNode,
         (member(Input, Inputs),
          nodes_producing_output(Nodes, Input, ProducingNodes),
-         member(DependencyNode, ProducingNodes)),
+         % If multiple nodes can produce this input, choose the most specific one
+         (ProducingNodes = [DependencyNode|_] ->
+            true
+        ;   ProducingNodes = [DependencyNode])),
         Dependencies).
+
+% Find the most specific producer for an output among multiple candidates
+% This prefers nodes that produce outputs with parameters that match the desired output
+most_specific_producer(Nodes, DesiredOutput, ProducingNodes, BestProducer) :-
+    findall(Score-Node,
+        (member(Node, ProducingNodes),
+         node_outputs(Node, Outputs),
+         member(ProducedOutput, Outputs),
+         agent_data_match(DesiredOutput, ProducedOutput),
+         % Calculate specificity score based on parameter matching
+         agent_data_parameters(DesiredOutput, DesiredParams),
+         agent_data_parameters(ProducedOutput, ProducedParams),
+         calculate_specificity_score(DesiredParams, ProducedParams, Score)),
+        ScoredNodes),
+    % Sort by score (highest first) and take the first
+    sort(ScoredNodes, SortedScoredNodes),
+    reverse(SortedScoredNodes, [BestScore-BestProducer|_]).
+
+% Calculate a specificity score for parameter matching
+% Higher score means more specific match
+calculate_specificity_score(DesiredParams, ProducedParams, Score) :-
+    % Count how many desired parameters are matched exactly
+    findall(1,
+        (member(DesiredParam, DesiredParams),
+         member(DesiredParam, ProducedParams)),
+        ExactMatches),
+    length(ExactMatches, Score).
 
 % Check if a node is ready to execute (all dependencies satisfied)
 node_ready(Nodes, Node, ExecutedNodes) :-
@@ -90,12 +146,24 @@ required_nodes(Nodes, DesiredOutputs, RequiredNodes) :-
 % Recursively collect required nodes from a list of agent_data outputs
 required_nodes_from_outputs(_, [], Acc, Acc).
 required_nodes_from_outputs(Nodes, [Output|Rest], Acc, RequiredNodes) :-
-    nodes_producing_output(Nodes, Output, [ProducingNode|_]),
-    required_nodes_from_node(Nodes, ProducingNode, Acc, NewAcc),
-    required_nodes_from_outputs(Nodes, Rest, NewAcc, RequiredNodes).
-required_nodes_from_outputs(Nodes, [_|Rest], Acc, RequiredNodes) :-
-    % If no node produces this output, skip
-    required_nodes_from_outputs(Nodes, Rest, Acc, RequiredNodes).
+    nodes_producing_output(Nodes, Output, ProducingNodes),
+    (ProducingNodes = [] ->
+        % No node produces this output, fail
+        fail
+    ;
+        % Try all possible producers, succeed if any can satisfy their inputs
+        try_producers(Nodes, ProducingNodes, Output, Rest, Acc, RequiredNodes)
+    ).
+
+% Try all possible producers for an output, succeed if any can satisfy their inputs
+try_producers(_, [], _, _, _, _) :- fail.
+try_producers(Nodes, [Producer|RestProducers], Output, RestOutputs, Acc, RequiredNodes) :-
+    (can_node_inputs_be_satisfied(Nodes, Producer) ->
+        required_nodes_from_node(Nodes, Producer, Acc, NewAcc),
+        required_nodes_from_outputs(Nodes, RestOutputs, NewAcc, RequiredNodes)
+    ;
+        try_producers(Nodes, RestProducers, Output, RestOutputs, Acc, RequiredNodes)
+    ).
 
 % Recursively collect required nodes starting from a node
 required_nodes_from_node(Nodes, Node, Acc, NewAcc) :-
@@ -103,7 +171,35 @@ required_nodes_from_node(Nodes, Node, Acc, NewAcc) :-
         NewAcc = Acc
     ;
         node_inputs(Node, Inputs),
-        required_nodes_from_outputs(Nodes, Inputs, Acc, AccWithDeps),
+        % Check if all inputs that are produced by nodes in the graph can be satisfied
+        % If any input cannot be satisfied, this predicate should fail
+        forall(member(Input, Inputs),
+               (nodes_producing_output(Nodes, Input, ProducingNodes),
+                (ProducingNodes = [] ->
+                    % This input is not produced by any node, so it's an external input
+                    % We don't need to validate it
+                    true
+                ;   % This input is produced by some nodes, so it must be satisfiable
+                    % Check if any of the producing nodes can actually satisfy this input
+                    findall(ProducerNode,
+                        (member(ProducerNode, ProducingNodes),
+                         node_outputs(ProducerNode, Outputs),
+                         member(ProducedOutput, Outputs),
+                         agent_data_match(Input, ProducedOutput)),
+                        ValidProducers),
+                    (ValidProducers = [] ->
+                        % No valid producers for this input, fail
+                        fail
+                    ;   % At least one valid producer exists
+                        true)
+                ))),
+        % For each input, find the most specific producer based on desired outputs
+        findall(Input,
+            (member(Input, Inputs),
+             nodes_producing_output(Nodes, Input, ProducingNodes),
+             ProducingNodes \= []),
+            ValidInputs),
+        required_nodes_from_outputs(Nodes, ValidInputs, Acc, AccWithDeps),
         append(AccWithDeps, [Node], NewAcc)
     ).
 
@@ -151,8 +247,14 @@ plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath) :-
     % Remove duplicates while preserving order
     remove_duplicates(RequiredNodes, UniqueRequiredNodes),
     
+    % Filter to only include nodes that are actually needed
+    filter_required_nodes(Nodes, DesiredOutputs, UniqueRequiredNodes, FilteredNodes),
+    
+    % Validate that all required inputs can be satisfied
+    % validate_required_inputs(Nodes, FilteredNodes),
+    
     % Perform topological sort to get execution order
-    topological_sort(UniqueRequiredNodes, SortedNodes),
+    topological_sort(FilteredNodes, SortedNodes),
     
     % Extract only the node names for output
     extract_node_names(SortedNodes, ExecutionPath).
@@ -234,3 +336,153 @@ test_path_planning :-
     example_desired_outputs(DesiredOutputs),
     plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath),
     write('Execution Path: '), write(ExecutionPath), nl. 
+
+% Check if a node is needed in the execution path
+% A node is needed if it produces one of the desired outputs OR
+% if it produces an output that is consumed by another required node
+node_is_needed(Nodes, Node, DesiredOutputs, RequiredNodes, Needed) :-
+    node_outputs(Node, NodeOutputs),
+    (member(Output, NodeOutputs),
+     member(Output, DesiredOutputs) ->
+        Needed = true
+    ;   % Check if any of this node's outputs are consumed by other required nodes
+        findall(ConsumerNode,
+            (member(ConsumerNode, RequiredNodes),
+             ConsumerNode \= Node,
+             node_inputs(ConsumerNode, Inputs),
+             member(Input, Inputs),
+             member(ProducedOutput, NodeOutputs),
+             agent_data_match(Input, ProducedOutput)),
+            Consumers),
+        (Consumers = [] ->
+            Needed = false
+        ;   % Check if this node produces parameterized outputs that aren't needed
+            (member(ProducedOutput, NodeOutputs),
+             agent_data_parameters(ProducedOutput, ProducedParams),
+             ProducedParams \= [] ->
+                % This node produces an output with specific parameters
+                % Check if this specific parameter combination is actually needed
+                (member(DesiredOutput, DesiredOutputs),
+                 agent_data_name(DesiredOutput, OutputName),
+                 agent_data_name(ProducedOutput, OutputName),
+                 agent_data_parameters(DesiredOutput, DesiredParams),
+                 ProducedParams = DesiredParams ->
+                    % This exact parameter combination is requested
+                    Needed = true
+                ;   % Check if any consumer node needs this specific parameter combination
+                    findall(ConsumerNode,
+                        (member(ConsumerNode, RequiredNodes),
+                         ConsumerNode \= Node,
+                         node_inputs(ConsumerNode, Inputs),
+                         member(Input, Inputs),
+                         agent_data_name(Input, OutputName),
+                         agent_data_name(ProducedOutput, OutputName),
+                         agent_data_parameters(Input, InputParams),
+                         parameters_subset(InputParams, ProducedParams)),
+                        SpecificConsumers),
+                    (SpecificConsumers = [] ->
+                        Needed = false
+                    ;   Needed = true)
+                )
+            ;   Needed = true)
+        )
+    ).
+
+% Filter nodes to only include those that are actually needed
+filter_required_nodes(Nodes, DesiredOutputs, AllRequiredNodes, FilteredNodes) :-
+    findall(Node,
+        (member(Node, AllRequiredNodes),
+         node_is_needed(Nodes, Node, DesiredOutputs, AllRequiredNodes, true)),
+        FilteredNodes).
+
+% Validate that all required inputs for the selected nodes can be satisfied
+% Only validate inputs that are produced by other nodes in the graph
+validate_required_inputs(Nodes, SelectedNodes) :-
+    forall(member(Node, SelectedNodes),
+           validate_node_inputs_from_selected(Nodes, SelectedNodes, Node)).
+
+% Validate that all inputs for a specific node can be satisfied by the selected nodes
+% Skip inputs that are not produced by any node in the graph (external inputs)
+validate_node_inputs_from_selected(Nodes, SelectedNodes, Node) :-
+    node_inputs(Node, Inputs),
+    forall(member(Input, Inputs),
+           (nodes_producing_output(Nodes, Input, ProducingNodes),
+            (ProducingNodes = [] ->
+                % This input is not produced by any node, so it's an external input
+                % We don't need to validate it
+                true
+            ;   % This input is produced by some nodes, so validate it's satisfied
+                % Check if any of the selected nodes can produce this input with matching parameters
+                findall(ProducerNode,
+                    (member(ProducerNode, SelectedNodes),
+                     ProducerNode \= Node,
+                     node_outputs(ProducerNode, Outputs),
+                     member(ProducedOutput, Outputs),
+                     agent_data_match(Input, ProducedOutput)),
+                    ValidProducers),
+                (ValidProducers = [] ->
+                    % No selected node can produce this input with matching parameters
+                    % Check if there are any nodes that could produce this input (even with wrong parameters)
+                    findall(PotentialProducer,
+                        (member(PotentialProducer, Nodes),
+                         PotentialProducer \= Node,
+                         node_outputs(PotentialProducer, Outputs),
+                         member(ProducedOutput, Outputs),
+                         agent_data_name(Input, InputName),
+                         agent_data_name(ProducedOutput, InputName)),
+                        PotentialProducers),
+                    (PotentialProducers = [] ->
+                        % No node at all can produce this input, so it's truly external
+                        true
+                    ;   % Some nodes can produce this input but with wrong parameters
+                        % This should cause validation to fail
+                        fail
+                    )
+                ;   % At least one selected node can produce this input
+                    true
+                )
+            ))).
+
+% Alternative validation that checks if all inputs are satisfied by the selected nodes
+validate_node_inputs_from_selected(Nodes, SelectedNodes, Node) :-
+    node_inputs(Node, Inputs),
+    forall(member(Input, Inputs),
+           (member(ProducerNode, SelectedNodes),
+            ProducerNode \= Node,
+            node_outputs(ProducerNode, Outputs),
+            member(ProducedOutput, Outputs),
+            agent_data_match(Input, ProducedOutput))).
+
+% Check if a node's inputs can be satisfied by any nodes in the graph
+can_node_inputs_be_satisfied(Nodes, Node) :-
+    node_inputs(Node, Inputs),
+    forall(member(Input, Inputs),
+           (nodes_producing_output(Nodes, Input, ProducingNodes),
+            (ProducingNodes = [] ->
+                % Check if this input is truly external (not produced by any node at all)
+                % or if it's produced by nodes but with wrong parameters
+                agent_data_name(Input, InputName),
+                findall(PotentialProducer,
+                    (member(PotentialProducer, Nodes),
+                     PotentialProducer \= Node,
+                     node_outputs(PotentialProducer, Outputs),
+                     member(ProducedOutput, Outputs),
+                     agent_data_name(ProducedOutput, InputName)),
+                    PotentialProducers),
+                (PotentialProducers = [] ->
+                    % This input is truly external (not produced by any node)
+                    true
+                ;   % This input is produced by some nodes but with wrong parameters
+                    % This should cause validation to fail
+                    fail
+                )
+            ;   % This input is produced by some nodes, so it must be satisfiable
+                % Check if any of the producing nodes can actually satisfy this input
+                findall(ProducerNode,
+                    (member(ProducerNode, ProducingNodes),
+                     node_outputs(ProducerNode, Outputs),
+                     member(ProducedOutput, Outputs),
+                     agent_data_match(Input, ProducedOutput)),
+                    ValidProducers),
+                ValidProducers \= []
+            ))).

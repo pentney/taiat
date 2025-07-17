@@ -7,7 +7,6 @@ def three_analysis(state: State) -> State:
     state["data"]["three_data"] = state["data"]["one_data"].model_copy(deep=True)
     state["data"]["three_data"].data["three"] = 1.0
     return state
-    return state
 
 
 def two_analysis(state: State) -> State:

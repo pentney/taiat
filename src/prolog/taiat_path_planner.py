@@ -136,11 +136,11 @@ main :-
         Returns:
             Prolog representation as a string
         """
-        # Convert parameters to Prolog format with hyphens
+        # Convert parameters to Prolog format with hyphens and proper quoting
         if not agent_data.parameters:
             params_str = "[]"
         else:
-            param_list = [f"{k}-{v}" for k, v in agent_data.parameters.items()]
+            param_list = [f"'{k}'-'{v}'" for k, v in agent_data.parameters.items()]
             params_str = f"[{', '.join(param_list)}]"
 
         # Escape single quotes in description

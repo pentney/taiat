@@ -3,7 +3,7 @@
 
 :- include('path_planner.pl').
 
-test_write :- write('DEBUG: test_write works!'), nl.
+
 
 % Test data
 test_node_set(agent_graph_node_set([
