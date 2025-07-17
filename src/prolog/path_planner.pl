@@ -93,9 +93,6 @@ required_nodes_from_outputs(Nodes, [Output|Rest], Acc, RequiredNodes) :-
     nodes_producing_output(Nodes, Output, [ProducingNode|_]),
     required_nodes_from_node(Nodes, ProducingNode, Acc, NewAcc),
     required_nodes_from_outputs(Nodes, Rest, NewAcc, RequiredNodes).
-required_nodes_from_outputs(Nodes, [_|Rest], Acc, RequiredNodes) :-
-    % If no node produces this output, skip
-    required_nodes_from_outputs(Nodes, Rest, Acc, RequiredNodes).
 
 % Recursively collect required nodes starting from a node
 required_nodes_from_node(Nodes, Node, Acc, NewAcc) :-
@@ -156,6 +153,128 @@ plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath) :-
     
     % Extract only the node names for output
     extract_node_names(SortedNodes, ExecutionPath).
+
+% NEW: Generate multiple alternative execution paths
+% This finds all possible paths to produce the desired outputs
+plan_multiple_execution_paths(NodeSet, DesiredOutputs, ExecutionPaths) :-
+    agent_graph_node_set_nodes(NodeSet, Nodes),
+    findall(Path, 
+        (alternative_execution_path(Nodes, DesiredOutputs, Path)),
+        ExecutionPaths).
+
+% Generate an alternative execution path by choosing different producers for outputs
+alternative_execution_path(Nodes, DesiredOutputs, ExecutionPath) :-
+    % For each desired output, find all possible producers
+    findall(OutputProducers, 
+        (member(Output, DesiredOutputs),
+         nodes_producing_output(Nodes, Output, OutputProducers)),
+        AllOutputProducers),
+    
+    % Generate combinations of producers
+    generate_producer_combinations(Nodes, AllOutputProducers, [], RequiredNodes),
+    
+    % Remove duplicates while preserving order
+    remove_duplicates(RequiredNodes, UniqueRequiredNodes),
+    
+    % Perform topological sort to get execution order
+    topological_sort(UniqueRequiredNodes, SortedNodes),
+    
+    % Extract only the node names for output
+    extract_node_names(SortedNodes, ExecutionPath).
+
+% Generate combinations of producers for different outputs
+generate_producer_combinations(_, [], Acc, Acc).
+generate_producer_combinations(Nodes, [Producers|Rest], Acc, Result) :-
+    member(Producer, Producers),
+    required_nodes_from_node(Nodes, Producer, Acc, NewAcc),
+    generate_producer_combinations(Nodes, Rest, NewAcc, Result).
+
+% NEW: Plan execution path excluding failed nodes
+plan_execution_path_excluding_failed(NodeSet, DesiredOutputs, FailedNodes, ExecutionPath) :-
+    agent_graph_node_set_nodes(NodeSet, AllNodes),
+    
+    % Remove failed nodes from consideration (compare by node name)
+    filter_out_failed_nodes(AllNodes, FailedNodes, AvailableNodes),
+    
+    % Try to plan a path with the remaining nodes directly
+    required_nodes(AvailableNodes, DesiredOutputs, RequiredNodes),
+    
+    % Remove duplicates while preserving order
+    remove_duplicates(RequiredNodes, UniqueRequiredNodes),
+    
+    % Perform topological sort to get execution order
+    topological_sort(UniqueRequiredNodes, SortedNodes),
+    
+    % Extract only the node names for output
+    extract_node_names(SortedNodes, ExecutionPath).
+
+% Helper predicate to filter out failed nodes by name
+filter_out_failed_nodes([], _, []).
+filter_out_failed_nodes([Node|Rest], FailedNodes, [Node|FilteredRest]) :-
+    node_name(Node, NodeName),
+    \+ member(NodeName, FailedNodes),
+    filter_out_failed_nodes(Rest, FailedNodes, FilteredRest).
+filter_out_failed_nodes([Node|Rest], FailedNodes, FilteredRest) :-
+    node_name(Node, NodeName),
+    member(NodeName, FailedNodes),
+    filter_out_failed_nodes(Rest, FailedNodes, FilteredRest).
+
+% NEW: Find alternative paths when a specific node fails
+find_alternative_paths_on_failure(NodeSet, DesiredOutputs, FailedNode, AlternativePaths) :-
+    agent_graph_node_set_nodes(NodeSet, AllNodes),
+    
+    % Find what outputs the failed node was supposed to produce
+    member(FailedNodeObj, AllNodes),
+    node_name(FailedNodeObj, FailedNode),
+    node_outputs(FailedNodeObj, FailedOutputs),
+    
+    % Find other nodes that can produce the same outputs
+    findall(AlternativePath,
+        (member(FailedOutput, FailedOutputs),
+         nodes_producing_output(AllNodes, FailedOutput, AlternativeProducers),
+         member(AlternativeProducer, AlternativeProducers),
+         node_name(AlternativeProducer, AlternativeProducerName),
+         AlternativeProducerName \= FailedNode,
+         % Plan a path using this alternative producer
+         plan_execution_path_with_alternative_producer(AllNodes, DesiredOutputs, FailedOutput, AlternativeProducer, AlternativePath)),
+        AlternativePaths).
+
+% Plan execution path using an alternative producer for a specific output
+plan_execution_path_with_alternative_producer(AllNodes, DesiredOutputs, TargetOutput, AlternativeProducer, ExecutionPath) :-
+    % Temporarily modify the desired outputs to use the alternative producer
+    % This is a simplified approach - in practice, you might need more sophisticated logic
+    required_nodes_from_node(AllNodes, AlternativeProducer, [], RequiredNodes),
+    
+    % Remove duplicates while preserving order
+    remove_duplicates(RequiredNodes, UniqueRequiredNodes),
+    
+    % Perform topological sort to get execution order
+    topological_sort(UniqueRequiredNodes, SortedNodes),
+    
+    % Extract only the node names for output
+    extract_node_names(SortedNodes, ExecutionPath).
+
+% NEW: Get all possible producers for a specific output
+get_all_producers_for_output(NodeSet, Output, Producers) :-
+    agent_graph_node_set_nodes(NodeSet, Nodes),
+    nodes_producing_output(Nodes, Output, Producers).
+
+% NEW: Validate if a path is still viable after excluding certain nodes
+validate_path_viability(NodeSet, ExecutionPath, ExcludedNodes, Viable) :-
+    agent_graph_node_set_nodes(NodeSet, AllNodes),
+    
+    % Convert path names back to node objects
+    findall(Node,
+        (member(PathNodeName, ExecutionPath),
+         member(Node, AllNodes),
+         node_name(Node, PathNodeName)),
+        PathNodes),
+    
+    % Check if any path node is in the excluded list
+    (member(ExcludedNode, ExcludedNodes),
+     member(ExcludedNode, PathNodes) ->
+        Viable = false
+    ;   Viable = true).
 
 % Helper predicate to extract nodes from node set
 agent_graph_node_set_nodes(agent_graph_node_set(Nodes), Nodes).

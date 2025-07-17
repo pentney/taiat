@@ -279,6 +279,346 @@ main :-
             print(f"Error in optimized Prolog planning: {e}")
             return None
 
+    def plan_multiple_paths(
+        self, node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
+    ) -> List[List[str]]:
+        """
+        Plan multiple alternative execution paths using the pre-compiled Prolog program.
+
+        Args:
+            node_set: The AgentGraphNodeSet containing all available nodes
+            desired_outputs: List of desired outputs to produce
+
+        Returns:
+            List of alternative execution paths, each as a list of node names
+        """
+        # Check node set size
+        if not self._check_node_set_size(node_set):
+            return []
+
+        try:
+            # Convert data to Prolog format
+            node_set_str = self._node_set_to_prolog(node_set)
+            outputs_str = self._desired_outputs_to_prolog(desired_outputs)
+
+            # Create a wrapper program for multiple path planning
+            wrapper_program = f"""
+:- initialization(main).
+:- include('{self.prolog_script_path}').
+
+main :-
+    read(NodeSet),
+    read(DesiredOutputs),
+    plan_multiple_execution_paths(NodeSet, DesiredOutputs, ExecutionPaths),
+    write('MULTIPLE_PATHS:'), write(ExecutionPaths), nl,
+    halt.
+"""
+
+            # Write temporary wrapper
+            wrapper_path = os.path.join(self.temp_dir, "multi_path_wrapper.pl")
+            with open(wrapper_path, "w") as f:
+                f.write(wrapper_program)
+
+            # Compile the wrapper program
+            multi_path_program = os.path.join(self.temp_dir, "multi_path_planner.exe")
+            result = subprocess.run(
+                ["gplc", "-o", multi_path_program, wrapper_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env={**os.environ, "GLOBALSZ": "65536", "TRAILSZ": "32768"},
+            )
+
+            if result.returncode != 0:
+                print(f"Failed to compile multi-path planner: {result.stderr}")
+                return []
+
+            # Run the compiled program
+            proc = subprocess.run(
+                [multi_path_program],
+                input=f"{node_set_str}.\n{outputs_str}.\n",
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if proc.returncode != 0:
+                print(f"Multi-path Prolog planner error: {proc.stderr}")
+                return []
+
+            # Parse the output
+            for line in proc.stdout.splitlines():
+                if line.startswith("MULTIPLE_PATHS:"):
+                    result_str = line[len("MULTIPLE_PATHS:") :].strip()
+                    return self._parse_multiple_paths(result_str)
+
+            print("No multiple paths found in Prolog output")
+            return []
+
+        except Exception as e:
+            print(f"Error in multi-path Prolog planning: {e}")
+            return []
+
+    def plan_path_excluding_failed(
+        self,
+        node_set: AgentGraphNodeSet,
+        desired_outputs: List[AgentData],
+        failed_nodes: List[str],
+    ) -> Optional[List[str]]:
+        """
+        Plan execution path excluding failed nodes.
+
+        Args:
+            node_set: The AgentGraphNodeSet containing all available nodes
+            desired_outputs: List of desired outputs to produce
+            failed_nodes: List of node names that have failed
+
+        Returns:
+            List of node names in execution order, or None if planning failed
+        """
+        # Check node set size
+        if not self._check_node_set_size(node_set):
+            return None
+
+        try:
+            # Convert data to Prolog format
+            node_set_str = self._node_set_to_prolog(node_set)
+            outputs_str = self._desired_outputs_to_prolog(desired_outputs)
+            failed_nodes_str = (
+                "[" + ", ".join([f"'{node}'" for node in failed_nodes]) + "]"
+            )
+
+            # Create a wrapper program for failed node exclusion
+            wrapper_program = f"""
+:- initialization(main).
+:- include('{self.prolog_script_path}').
+
+main :-
+    read(NodeSet),
+    read(DesiredOutputs),
+    read(FailedNodes),
+    plan_execution_path_excluding_failed(NodeSet, DesiredOutputs, FailedNodes, ExecutionPath),
+    write('EXECUTION_PATH:'), write(ExecutionPath), nl,
+    halt.
+"""
+
+            # Write temporary wrapper
+            wrapper_path = os.path.join(self.temp_dir, "exclude_failed_wrapper.pl")
+            with open(wrapper_path, "w") as f:
+                f.write(wrapper_program)
+
+            # Compile the wrapper program
+            exclude_program = os.path.join(self.temp_dir, "exclude_failed_planner.exe")
+            result = subprocess.run(
+                ["gplc", "-o", exclude_program, wrapper_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env={**os.environ, "GLOBALSZ": "65536", "TRAILSZ": "32768"},
+            )
+
+            if result.returncode != 0:
+                print(f"Failed to compile exclude-failed planner: {result.stderr}")
+                return None
+
+            # Run the compiled program
+            proc = subprocess.run(
+                [exclude_program],
+                input=f"{node_set_str}.\n{outputs_str}.\n{failed_nodes_str}.\n",
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if proc.returncode != 0:
+                print(f"Exclude-failed Prolog planner error: {proc.stderr}")
+                return None
+
+            # Parse the output
+            for line in proc.stdout.splitlines():
+                if line.startswith("EXECUTION_PATH:"):
+                    result_str = line[len("EXECUTION_PATH:") :].strip()
+                    # If the result is an empty list, treat as failure
+                    if result_str == "[]":
+                        return None
+                    # Parse the Prolog list of node names
+                    import re
+
+                    node_pattern_quoted = r"'([^']+)'"
+                    node_names = re.findall(node_pattern_quoted, result_str)
+                    if not node_names:
+                        node_pattern_unquoted = r"([a-zA-Z0-9_]+)"
+                        node_names = re.findall(node_pattern_unquoted, result_str)
+                    node_names = [
+                        n for n in node_names if n not in ("ExecutionPath", "[]")
+                    ]
+                    if node_names:
+                        return node_names
+                    else:
+                        print(f"Could not parse execution path: {result_str}")
+                        return None
+            print("No execution path found in Prolog output")
+            return None
+
+        except Exception as e:
+            print(f"Error in exclude-failed Prolog planning: {e}")
+            return None
+
+    def find_alternative_paths_on_failure(
+        self,
+        node_set: AgentGraphNodeSet,
+        desired_outputs: List[AgentData],
+        failed_node: str,
+    ) -> List[List[str]]:
+        """
+        Find alternative paths when a specific node fails.
+
+        Args:
+            node_set: The AgentGraphNodeSet containing all available nodes
+            desired_outputs: List of desired outputs to produce
+            failed_node: Name of the node that failed
+
+        Returns:
+            List of alternative execution paths
+        """
+        # Check node set size
+        if not self._check_node_set_size(node_set):
+            return []
+
+        try:
+            # Convert data to Prolog format
+            node_set_str = self._node_set_to_prolog(node_set)
+            outputs_str = self._desired_outputs_to_prolog(desired_outputs)
+            failed_node_str = f"'{failed_node}'"
+
+            # Create a wrapper program for alternative path finding
+            wrapper_program = f"""
+:- initialization(main).
+:- include('{self.prolog_script_path}').
+
+main :-
+    read(NodeSet),
+    read(DesiredOutputs),
+    read(FailedNode),
+    find_alternative_paths_on_failure(NodeSet, DesiredOutputs, FailedNode, AlternativePaths),
+    write('ALTERNATIVE_PATHS:'), write(AlternativePaths), nl,
+    halt.
+"""
+
+            # Write temporary wrapper
+            wrapper_path = os.path.join(self.temp_dir, "alternative_paths_wrapper.pl")
+            with open(wrapper_path, "w") as f:
+                f.write(wrapper_program)
+
+            # Compile the wrapper program
+            alternative_program = os.path.join(
+                self.temp_dir, "alternative_paths_planner.exe"
+            )
+            result = subprocess.run(
+                ["gplc", "-o", alternative_program, wrapper_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env={**os.environ, "GLOBALSZ": "65536", "TRAILSZ": "32768"},
+            )
+
+            if result.returncode != 0:
+                print(f"Failed to compile alternative paths planner: {result.stderr}")
+                return []
+
+            # Run the compiled program
+            proc = subprocess.run(
+                [alternative_program],
+                input=f"{node_set_str}.\n{outputs_str}.\n{failed_node_str}.\n",
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if proc.returncode != 0:
+                print(f"Alternative paths Prolog planner error: {proc.stderr}")
+                return []
+
+            # Parse the output
+            for line in proc.stdout.splitlines():
+                if line.startswith("ALTERNATIVE_PATHS:"):
+                    result_str = line[len("ALTERNATIVE_PATHS:") :].strip()
+                    return self._parse_multiple_paths(result_str)
+
+            print("No alternative paths found in Prolog output")
+            return []
+
+        except Exception as e:
+            print(f"Error in alternative paths Prolog planning: {e}")
+            return []
+
+    def _parse_multiple_paths(self, result_str: str) -> List[List[str]]:
+        """
+        Parse multiple paths from Prolog output.
+
+        Args:
+            result_str: String representation of multiple paths from Prolog
+
+        Returns:
+            List of paths, each as a list of node names
+        """
+        import re
+
+        # Handle empty result
+        if result_str == "[]":
+            return []
+
+        # Parse nested lists structure
+        # This is a simplified parser - in practice, you might need more sophisticated parsing
+        paths = []
+
+        # Find all path lists in the result
+        path_pattern = r"\[([^\]]+)\]"
+        path_matches = re.findall(path_pattern, result_str)
+
+        for path_match in path_matches:
+            # Parse individual node names in each path
+            node_pattern_quoted = r"'([^']+)'"
+            node_names = re.findall(node_pattern_quoted, path_match)
+            if not node_names:
+                node_pattern_unquoted = r"([a-zA-Z0-9_]+)"
+                node_names = re.findall(node_pattern_unquoted, path_match)
+
+            # Filter out non-node names
+            node_names = [
+                n
+                for n in node_names
+                if n not in ("ExecutionPath", "[]", "AlternativePaths")
+            ]
+
+            if node_names:
+                paths.append(node_names)
+
+        return paths
+
+    def validate_path_viability(
+        self,
+        node_set: AgentGraphNodeSet,
+        execution_path: List[str],
+        excluded_nodes: List[str],
+    ) -> bool:
+        """
+        Validate if a path is still viable after excluding certain nodes.
+
+        Args:
+            node_set: The AgentGraphNodeSet containing all available nodes
+            execution_path: List of node names in the execution path
+            excluded_nodes: List of node names that are excluded
+
+        Returns:
+            True if the path is viable, False otherwise
+        """
+        # Check if any node in the execution path is in the excluded list
+        for node_name in execution_path:
+            if node_name in excluded_nodes:
+                return False
+        return True
+
     def __del__(self):
         """Clean up temporary files when the object is destroyed."""
         try:

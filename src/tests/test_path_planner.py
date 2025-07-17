@@ -568,6 +568,201 @@ def test_name_mismatch():
         print(f"❌ test_name_mismatch failed: {path}")
 
 
+def test_fallback_path_planning():
+    """Test fallback path planning when a node fails."""
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.taiat_path_planner import plan_taiat_path_global, get_global_planner
+
+    # Create a graph with two alternative paths to the same output
+    # Path 1: data_loader -> preprocessor -> analyzer -> visualizer
+    # Path 2: data_loader -> preprocessor_alt -> analyzer_alt -> visualizer
+
+    data_loader = AgentGraphNode(
+        name="data_loader",
+        description="Load data from source",
+        inputs=[],
+        outputs=[
+            AgentData(name="raw_data", parameters={}, description="Raw data", data=None)
+        ],
+    )
+
+    # Path 1 nodes
+    preprocessor = AgentGraphNode(
+        name="preprocessor",
+        description="Preprocess the data",
+        inputs=[
+            AgentData(name="raw_data", parameters={}, description="Raw data", data=None)
+        ],
+        outputs=[
+            AgentData(
+                name="processed_data",
+                parameters={},
+                description="Processed data",
+                data=None,
+            )
+        ],
+    )
+
+    analyzer = AgentGraphNode(
+        name="analyzer",
+        description="Analyze the data",
+        inputs=[
+            AgentData(
+                name="processed_data",
+                parameters={},
+                description="Processed data",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="analysis_results",
+                parameters={},
+                description="Analysis results",
+                data=None,
+            )
+        ],
+    )
+
+    # Path 2 nodes (alternative path)
+    preprocessor_alt = AgentGraphNode(
+        name="preprocessor_alt",
+        description="Alternative preprocessor",
+        inputs=[
+            AgentData(name="raw_data", parameters={}, description="Raw data", data=None)
+        ],
+        outputs=[
+            AgentData(
+                name="processed_data",
+                parameters={},
+                description="Processed data",
+                data=None,
+            )
+        ],
+    )
+
+    analyzer_alt = AgentGraphNode(
+        name="analyzer_alt",
+        description="Alternative analyzer",
+        inputs=[
+            AgentData(
+                name="processed_data",
+                parameters={},
+                description="Processed data",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="analysis_results",
+                parameters={},
+                description="Analysis results",
+                data=None,
+            )
+        ],
+    )
+
+    # Common final node
+    visualizer = AgentGraphNode(
+        name="visualizer",
+        description="Create visualizations",
+        inputs=[
+            AgentData(
+                name="analysis_results",
+                parameters={},
+                description="Analysis results",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="visualizations",
+                parameters={},
+                description="Generated visualizations",
+                data=None,
+            )
+        ],
+    )
+
+    node_set = AgentGraphNodeSet(
+        nodes=[
+            data_loader,
+            preprocessor,
+            analyzer,
+            preprocessor_alt,
+            analyzer_alt,
+            visualizer,
+        ]
+    )
+
+    desired_outputs = [
+        AgentData(
+            name="visualizations",
+            parameters={},
+            description="Generated visualizations",
+            data=None,
+        )
+    ]
+
+    # Test 1: Initial path planning should find one of the paths
+    initial_path = plan_taiat_path_global(node_set, desired_outputs)
+    if not initial_path:
+        print("❌ test_fallback_path_planning failed: No initial path found")
+        return
+
+    print(f"✅ Initial path found: {initial_path}")
+
+    # Test 2: Simulate failure of a node in the first path
+    # Let's say 'preprocessor' fails
+    failed_node = "preprocessor"
+
+    # Try to find an alternative path excluding the failed node
+    planner = get_global_planner()
+    alternative_path = planner.plan_path_excluding_failed(
+        node_set, desired_outputs, [failed_node]
+    )
+
+    if not alternative_path:
+        print("❌ test_fallback_path_planning failed: No alternative path found")
+        return
+
+    print(f"✅ Alternative path found: {alternative_path}")
+
+    # Test 3: Verify the alternative path doesn't contain the failed node
+    if failed_node in alternative_path:
+        print(
+            f"❌ test_fallback_path_planning failed: Alternative path contains failed node '{failed_node}'"
+        )
+        return
+
+    # Test 4: Verify the alternative path can produce the desired output
+    # The path should end with 'visualizer' and include necessary dependencies
+    if alternative_path[-1] != "visualizer":
+        print(
+            f"❌ test_fallback_path_planning failed: Alternative path doesn't end with visualizer: {alternative_path}"
+        )
+        return
+
+    # Test 5: Verify the path includes data_loader (required dependency)
+    if "data_loader" not in alternative_path:
+        print(
+            f"❌ test_fallback_path_planning failed: Alternative path doesn't include data_loader: {alternative_path}"
+        )
+        return
+
+    # Test 6: Verify the path includes one of the alternative processors
+    if (
+        "preprocessor_alt" not in alternative_path
+        and "analyzer_alt" not in alternative_path
+    ):
+        print(
+            f"❌ test_fallback_path_planning failed: Alternative path doesn't use alternative processors: {alternative_path}"
+        )
+        return
+
+    print("✅ test_fallback_path_planning passed: Successfully found alternative path")
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -584,6 +779,7 @@ def main():
     test_param_conflict()
     test_param_empty()
     test_name_mismatch()
+    test_fallback_path_planning()
 
     print("\n" + "=" * 60)
     print("All tests completed!")

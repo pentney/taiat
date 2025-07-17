@@ -1,6 +1,8 @@
 % Unit tests for the Taiat Path Planner
 % Run with: gplc path_planner_test.pl path_planner.pl -o test_path_planner && ./test_path_planner
 
+:- include('path_planner.pl').
+
 test_write :- write('DEBUG: test_write works!'), nl.
 
 % Test data
@@ -164,6 +166,17 @@ test_plan_execution_path :-
     ExecutionPath = ['data_loader', 'preprocessor', 'analyzer', 'visualizer'],
     write('✓ plan_execution_path test passed'), nl.
 
+test_plan_execution_path_excluding_failed :-
+    test_node_set(NodeSet),
+    test_desired_outputs(DesiredOutputs),
+    % Exclude 'preprocessor' (should fail, as no alternative path exists)
+    (   plan_execution_path_excluding_failed(NodeSet, DesiredOutputs, ['preprocessor'], Path1)
+    ->  (write('✗ plan_execution_path_excluding_failed (no alt path) failed! Found path: '), write(Path1), nl, fail)
+    ;   write('✓ plan_execution_path_excluding_failed (no alt path) passed'), nl
+    ).
+
+% Add a test for a graph with two paths (like in the Python test) if you want to check positive fallback.
+
 test_validate_outputs :-
     test_node_set(NodeSet),
     validate_outputs(NodeSet, test_desired_outputs, Valid),
@@ -231,6 +244,7 @@ run_all_tests :-
     run_test(test_required_nodes),
     run_test(test_topological_sort),
     run_test(test_plan_execution_path),
+    run_test(test_plan_execution_path_excluding_failed),
     run_test(test_validate_outputs),
     run_test(test_available_outputs),
     run_test(test_complex_path_planning),

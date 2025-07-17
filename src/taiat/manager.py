@@ -211,6 +211,33 @@ class TaiatManager:
                 if self.metrics is not None:
                     self.metrics[next_planned_node]["calls"] += 1
                 return next_planned_node
+            else:
+                # If the next planned node is not ready (possibly due to failure), try to replan
+                if self.verbose:
+                    print(
+                        f"Planned node '{next_planned_node}' is not ready. Attempting to replan."
+                    )
+                # Find the last node that failed (status not done or running)
+                failed_nodes = [
+                    n
+                    for n in self.planned_execution_path
+                    if self.output_status.get(n) == "failed"
+                ]
+                if failed_nodes:
+                    failed_node = failed_nodes[0]
+                    # Attempt to replan excluding the failed node
+                    # You may want to pass the correct desired_outputs here
+                    # For now, we assume self.desired_outputs is available (set at init or externally)
+                    if hasattr(self, "desired_outputs") and self.handle_agent_failure(
+                        failed_node, self.desired_outputs
+                    ):
+                        return self.enhanced_router_function(state, node)
+                    else:
+                        if self.verbose:
+                            print(
+                                "No alternative path found after failure. Terminating."
+                            )
+                        return TAIAT_TERMINAL_NODE
 
         # Fall back to original routing logic
         if self.fallback_to_original:
@@ -218,6 +245,51 @@ class TaiatManager:
 
         # If no fallback and no more planned nodes, we're done
         return TAIAT_TERMINAL_NODE
+
+    def handle_agent_failure(
+        self, failed_node: str, desired_outputs: List[AgentData]
+    ) -> bool:
+        """
+        Handle agent failure by attempting to replan a path excluding the failed node.
+        If a new path is found, update the planned execution path and resume execution.
+        Returns True if a new path was found, False otherwise.
+        """
+        if not self.prolog_available:
+            if self.verbose:
+                print("Prolog planner not available for replanning.")
+            return False
+
+        try:
+            # Exclude the failed node and try to replan
+            from prolog.taiat_path_planner import get_global_planner
+
+            planner = get_global_planner()
+            new_path = planner.plan_path_excluding_failed(
+                self.node_set, desired_outputs, [failed_node]
+            )
+            if new_path:
+                if self.verbose:
+                    print(
+                        f"Replanned execution path excluding '{failed_node}': {new_path}"
+                    )
+                self.planned_execution_path = new_path
+                # Set current_path_index to the next node to run
+                # Find the first node in the new path that is not done
+                for idx, node in enumerate(new_path):
+                    if self.output_status.get(node) != "done":
+                        self.current_path_index = idx
+                        break
+                else:
+                    self.current_path_index = len(new_path)
+                return True
+            else:
+                if self.verbose:
+                    print(f"No alternative path found excluding '{failed_node}'.")
+                return False
+        except Exception as e:
+            if self.verbose:
+                print(f"Error replanning after failure of '{failed_node}': {e}")
+            return False
 
     def _is_node_ready_to_run(self, node_name: str) -> bool:
         """
