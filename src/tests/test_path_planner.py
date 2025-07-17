@@ -434,6 +434,137 @@ def test_prolog_unit_tests():
         print(f"❌ Prolog unit tests failed: {e}")
 
 
+def test_param_subset_match():
+    """Test parameter subset matching (should succeed)."""
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+
+    node = AgentGraphNode(
+        name="model_node",
+        description="Provides a model",
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="model",
+                parameters={"type": "logistic_regression", "version": "v1"},
+                description="",
+                data=None,
+            )
+        ],
+    )
+    node_set = AgentGraphNodeSet(nodes=[node])
+    desired_outputs = [
+        AgentData(
+            name="model",
+            parameters={"type": "logistic_regression"},
+            description="",
+            data=None,
+        )
+    ]
+    path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    if path == ["model_node"]:
+        print("✅ test_param_subset_match passed")
+    else:
+        print(f"❌ test_param_subset_match failed: {path}")
+
+
+def test_param_conflict():
+    """Test parameter conflict (should fail)."""
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+
+    node = AgentGraphNode(
+        name="model_node",
+        description="Provides a model",
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="model",
+                parameters={"type": "neural_network", "version": "v1"},
+                description="",
+                data=None,
+            )
+        ],
+    )
+    node_set = AgentGraphNodeSet(nodes=[node])
+    desired_outputs = [
+        AgentData(
+            name="model",
+            parameters={"type": "logistic_regression"},
+            description="",
+            data=None,
+        )
+    ]
+    path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    if not path:
+        print("✅ test_param_conflict passed")
+    else:
+        print(f"❌ test_param_conflict failed: {path}")
+
+
+def test_param_empty():
+    """Test empty input parameters (should succeed)."""
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+
+    node = AgentGraphNode(
+        name="model_node",
+        description="Provides a model",
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="model",
+                parameters={"type": "neural_network"},
+                description="",
+                data=None,
+            )
+        ],
+    )
+    node_set = AgentGraphNodeSet(nodes=[node])
+    desired_outputs = [
+        AgentData(name="model", parameters={}, description="", data=None)
+    ]
+    path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    if path == ["model_node"]:
+        print("✅ test_param_empty passed")
+    else:
+        print(f"❌ test_param_empty failed: {path}")
+
+
+def test_name_mismatch():
+    """Test name mismatch (should fail)."""
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+    from prolog.optimized_prolog_interface import plan_taiat_path_global_optimized
+
+    node = AgentGraphNode(
+        name="model_node",
+        description="Provides a model",
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="modelB",
+                parameters={"type": "logistic_regression"},
+                description="",
+                data=None,
+            )
+        ],
+    )
+    node_set = AgentGraphNodeSet(nodes=[node])
+    desired_outputs = [
+        AgentData(
+            name="modelA",
+            parameters={"type": "logistic_regression"},
+            description="",
+            data=None,
+        )
+    ]
+    path = plan_taiat_path_global_optimized(node_set, desired_outputs)
+    if not path:
+        print("✅ test_name_mismatch passed")
+    else:
+        print(f"❌ test_name_mismatch failed: {path}")
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -446,6 +577,10 @@ def main():
     test_invalid_output()
     test_convenience_functions()
     test_prolog_unit_tests()
+    test_param_subset_match()
+    test_param_conflict()
+    test_param_empty()
+    test_name_mismatch()
 
     print("\n" + "=" * 60)
     print("All tests completed!")

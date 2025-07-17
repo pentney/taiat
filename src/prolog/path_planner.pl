@@ -23,18 +23,36 @@ node_inputs(node(_, _, Inputs, _), Inputs).
 node_outputs(node(_, _, _, Outputs), Outputs).
 
 % Check if two agent data items match (name and parameters)
+% Input parameters must be a subset of output parameters (constraint matching)
 agent_data_match(agent_data(Name1, Params1, _, _), agent_data(Name2, Params2, _, _)) :-
     Name1 = Name2,
-    % For now, we'll do simple parameter matching
-    % In a full implementation, this would check parameter subset relationships
-    Params1 = Params2.
+    % Check if Params1 (input) is a subset of Params2 (output)
+    % This implements constraint matching: input parameters are constraints
+    % that must be satisfied by the output parameters
+    parameters_subset(Params1, Params2).
 
-% Find a node that produces a specific output
+% Check if parameters1 is a subset of parameters2. This means all key-value pairs in parameters1 must exist in parameters2
+parameters_subset([], _).
+parameters_subset([Key-Value|Rest], Params2) :-
+    member(Key-Value, Params2),
+    parameters_subset(Rest, Params2).
+
+% Find a node that produces a specific output (with parameter matching)
 node_produces_output(Node, Output) :-
     node_outputs(Node, Outputs),
-    member(Output, Outputs).
+    member(ProducedOutput, Outputs),
+    agent_data_match(Output, ProducedOutput).
 
-% Find all nodes that produce a specific output name
+% Find all nodes that produce a specific output (with parameter matching)
+nodes_producing_output(Nodes, Output, ProducingNodes) :-
+    findall(Node, 
+        (member(Node, Nodes), 
+         node_outputs(Node, Outputs),
+         member(ProducedOutput, Outputs),
+         agent_data_match(Output, ProducedOutput)),
+        ProducingNodes).
+
+% Find all nodes that produce a specific output name (legacy - for backward compatibility)
 nodes_producing_output_name(Nodes, OutputName, ProducingNodes) :-
     findall(Node, 
         (member(Node, Nodes), 
@@ -42,7 +60,7 @@ nodes_producing_output_name(Nodes, OutputName, ProducingNodes) :-
          member(agent_data(OutputName, _, _, _), Outputs)),
         ProducingNodes).
 
-% Find all nodes that consume a specific input name
+% Find all nodes that consume a specific input name (legacy - for backward compatibility)
 nodes_consuming_input_name(Nodes, InputName, ConsumingNodes) :-
     findall(Node,
         (member(Node, Nodes),
@@ -50,13 +68,12 @@ nodes_consuming_input_name(Nodes, InputName, ConsumingNodes) :-
          member(agent_data(InputName, _, _, _), Inputs)),
         ConsumingNodes).
 
-% Get all dependencies for a node (nodes that produce its inputs)
+% Get all dependencies for a node (nodes that produce its inputs with parameter matching)
 node_dependencies(Nodes, Node, Dependencies) :-
     node_inputs(Node, Inputs),
     findall(DependencyNode,
         (member(Input, Inputs),
-         agent_data_name(Input, InputName),
-         nodes_producing_output_name(Nodes, InputName, ProducingNodes),
+         nodes_producing_output(Nodes, Input, ProducingNodes),
          member(DependencyNode, ProducingNodes)),
         Dependencies).
 

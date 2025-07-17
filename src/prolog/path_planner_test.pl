@@ -64,6 +64,38 @@ test_agent_data_match :-
     ),
     write('✓ agent_data_match test passed'), nl.
 
+test_agent_data_match_params_subset :-
+    agent_data_match(
+        agent_data('model', [type-logistic_regression], 'input', null),
+        agent_data('model', [type-logistic_regression, version-v1], 'output', null)
+    ),
+    write('✓ agent_data_match params subset test passed'), nl.
+
+test_agent_data_match_params_conflict :-
+    (   agent_data_match(
+            agent_data('model', [type-logistic_regression], 'input', null),
+            agent_data('model', [type-neural_network, version-v1], 'output', null)
+        )
+    ->  (write('✗ agent_data_match params conflict test failed!'), nl, fail)
+    ;   write('✓ agent_data_match params conflict test passed'), nl
+    ).
+
+test_agent_data_match_params_empty :-
+    agent_data_match(
+        agent_data('model', [], 'input', null),
+        agent_data('model', [type-neural_network], 'output', null)
+    ),
+    write('✓ agent_data_match params empty test passed'), nl.
+
+test_agent_data_match_name_mismatch :-
+    (   agent_data_match(
+            agent_data('modelA', [type-logistic_regression], 'input', null),
+            agent_data('modelB', [type-logistic_regression], 'output', null)
+        )
+    ->  (write('✗ agent_data_match name mismatch test failed!'), nl, fail)
+    ;   write('✓ agent_data_match name mismatch test passed'), nl
+    ).
+
 test_node_produces_output :-
     test_node_set(NodeSet),
     agent_graph_node_set_nodes(NodeSet, Nodes),
@@ -190,6 +222,10 @@ run_all_tests :-
     write('Running Taiat Path Planner Tests...'), nl, nl,
     run_test(test_agent_data_name),
     run_test(test_agent_data_match),
+    run_test(test_agent_data_match_params_subset),
+    run_test(test_agent_data_match_params_conflict),
+    run_test(test_agent_data_match_params_empty),
+    run_test(test_agent_data_match_name_mismatch),
     run_test(test_node_produces_output),
     run_test(test_nodes_producing_output_name),
     run_test(test_node_dependencies),
