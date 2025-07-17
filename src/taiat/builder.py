@@ -371,6 +371,23 @@ class TaiatBuilder:
         else:
             return self.get_plan_original(query, goal_outputs)
 
+    def _format_output_with_params(self, output: AgentData) -> str:
+        """
+        Format an output name with its parameters for display.
+
+        Args:
+            output: The AgentData output to format
+
+        Returns:
+            Formatted string with name and parameters
+        """
+        if not output.parameters:
+            return output.name
+        else:
+            # Format parameters as key=value pairs
+            param_str = ", ".join([f"{k}={v}" for k, v in output.parameters.items()])
+            return f"{output.name}({param_str})"
+
     def create_graph_visualization(
         self, query: TaiatQuery, goal_outputs: list[AgentData]
     ) -> Optional[str]:
@@ -412,7 +429,7 @@ class TaiatBuilder:
                             or input_data.parameters.items()
                             <= output.parameters.items()
                         ):
-                            edge_outputs.append(output.name)
+                            edge_outputs.append(self._format_output_with_params(output))
 
             # Create edge label with the data flow
             if edge_outputs:
@@ -437,7 +454,10 @@ class TaiatBuilder:
             requested_outputs = {}
             for goal_output in goal_outputs:
                 # Find which node in the execution path produces this output
+                found_match = False
                 for node in query.path:
+                    if found_match:
+                        break
                     for output in node.outputs:
                         if output.name == goal_output.name:
                             # Check if parameters match
@@ -446,10 +466,12 @@ class TaiatBuilder:
                                 or goal_output.parameters.items()
                                 <= output.parameters.items()
                             ):
-                                requested_outputs[goal_output.name] = node.name
+                                formatted_output = self._format_output_with_params(
+                                    output
+                                )
+                                requested_outputs[formatted_output] = node.name
+                                found_match = True
                                 break
-                    if goal_output.name in requested_outputs:
-                        break
 
             if requested_outputs:
                 # Add a special node to show final outputs
