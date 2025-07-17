@@ -77,6 +77,16 @@ find_most_specific_producer(Nodes, DesiredOutput, Candidates, [BestProducer]) :-
     sort(ScoredNodes, SortedScoredNodes),
     reverse(SortedScoredNodes, [BestScore-BestProducer|_]).
 
+% Calculate a specificity score for parameter matching
+% Higher score means more specific match
+calculate_specificity_score(DesiredParams, ProducedParams, Score) :-
+    % Count how many desired parameters are matched exactly
+    findall(1,
+        (member(DesiredParam, DesiredParams),
+         member(DesiredParam, ProducedParams)),
+        ExactMatches),
+    length(ExactMatches, Score).
+
 % Find all nodes that produce a specific output name (legacy - for backward compatibility)
 nodes_producing_output_name(Nodes, OutputName, ProducingNodes) :-
     findall(Node, 
@@ -85,13 +95,7 @@ nodes_producing_output_name(Nodes, OutputName, ProducingNodes) :-
          member(agent_data(OutputName, _, _, _), Outputs)),
         ProducingNodes).
 
-% Find all nodes that consume a specific input name (legacy - for backward compatibility)
-nodes_consuming_input_name(Nodes, InputName, ConsumingNodes) :-
-    findall(Node,
-        (member(Node, Nodes),
-         node_inputs(Node, Inputs),
-         member(agent_data(InputName, _, _, _), Inputs)),
-        ConsumingNodes).
+
 
 % Get all dependencies for a node (nodes that produce its inputs with parameter matching)
 % When multiple nodes can produce the same input, prefer the most specific match
@@ -106,32 +110,7 @@ node_dependencies(Nodes, Node, Dependencies) :-
         ;   ProducingNodes = [DependencyNode])),
         Dependencies).
 
-% Find the most specific producer for an output among multiple candidates
-% This prefers nodes that produce outputs with parameters that match the desired output
-most_specific_producer(Nodes, DesiredOutput, ProducingNodes, BestProducer) :-
-    findall(Score-Node,
-        (member(Node, ProducingNodes),
-         node_outputs(Node, Outputs),
-         member(ProducedOutput, Outputs),
-         agent_data_match(DesiredOutput, ProducedOutput),
-         % Calculate specificity score based on parameter matching
-         agent_data_parameters(DesiredOutput, DesiredParams),
-         agent_data_parameters(ProducedOutput, ProducedParams),
-         calculate_specificity_score(DesiredParams, ProducedParams, Score)),
-        ScoredNodes),
-    % Sort by score (highest first) and take the first
-    sort(ScoredNodes, SortedScoredNodes),
-    reverse(SortedScoredNodes, [BestScore-BestProducer|_]).
 
-% Calculate a specificity score for parameter matching
-% Higher score means more specific match
-calculate_specificity_score(DesiredParams, ProducedParams, Score) :-
-    % Count how many desired parameters are matched exactly
-    findall(1,
-        (member(DesiredParam, DesiredParams),
-         member(DesiredParam, ProducedParams)),
-        ExactMatches),
-    length(ExactMatches, Score).
 
 % Check if a node is ready to execute (all dependencies satisfied)
 node_ready(Nodes, Node, ExecutedNodes) :-
@@ -250,9 +229,6 @@ plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath) :-
     % Filter to only include nodes that are actually needed
     filter_required_nodes(Nodes, DesiredOutputs, UniqueRequiredNodes, FilteredNodes),
     
-    % Validate that all required inputs can be satisfied
-    % validate_required_inputs(Nodes, FilteredNodes),
-    
     % Perform topological sort to get execution order
     topological_sort(FilteredNodes, SortedNodes),
     
@@ -298,44 +274,7 @@ available_outputs(NodeSet, AvailableOutputs) :-
         AllOutputs),
     remove_duplicates(AllOutputs, AvailableOutputs).
 
-% Predicate to check for circular dependencies
-has_circular_dependencies(NodeSet, HasCircular) :-
-    agent_graph_node_set_nodes(NodeSet, Nodes),
-    findall(Node,
-        (member(Node, Nodes),
-         node_dependencies(Nodes, Node, Dependencies),
-         member(Node, Dependencies)),
-        CircularNodes),
-    (CircularNodes = [] ->
-        HasCircular = false
-    ;   HasCircular = true).
-
-% Example usage predicates for testing
-example_node_set(agent_graph_node_set([
-    node('data_loader', 'Load data from source', 
-         [], 
-         [agent_data('raw_data', [], 'Raw data from source', null)]),
-    node('preprocessor', 'Preprocess the data',
-         [agent_data('raw_data', [], 'Raw data from source', null)],
-         [agent_data('processed_data', [], 'Preprocessed data', null)]),
-    node('analyzer', 'Analyze the data',
-         [agent_data('processed_data', [], 'Preprocessed data', null)],
-         [agent_data('analysis_results', [], 'Analysis results', null)]),
-    node('visualizer', 'Create visualizations',
-         [agent_data('analysis_results', [], 'Analysis results', null)],
-         [agent_data('visualizations', [], 'Generated visualizations', null)])
-])).
-
-example_desired_outputs([
-    agent_data('visualizations', [], 'Generated visualizations', null)
-]).
-
-% Test predicate
-test_path_planning :-
-    example_node_set(NodeSet),
-    example_desired_outputs(DesiredOutputs),
-    plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath),
-    write('Execution Path: '), write(ExecutionPath), nl. 
+ 
 
 % Check if a node is needed in the execution path
 % A node is needed if it produces one of the desired outputs OR
@@ -395,11 +334,7 @@ filter_required_nodes(Nodes, DesiredOutputs, AllRequiredNodes, FilteredNodes) :-
          node_is_needed(Nodes, Node, DesiredOutputs, AllRequiredNodes, true)),
         FilteredNodes).
 
-% Validate that all required inputs for the selected nodes can be satisfied
-% Only validate inputs that are produced by other nodes in the graph
-validate_required_inputs(Nodes, SelectedNodes) :-
-    forall(member(Node, SelectedNodes),
-           validate_node_inputs_from_selected(Nodes, SelectedNodes, Node)).
+
 
 % Validate that all inputs for a specific node can be satisfied by the selected nodes
 % Skip inputs that are not produced by any node in the graph (external inputs)
@@ -443,15 +378,7 @@ validate_node_inputs_from_selected(Nodes, SelectedNodes, Node) :-
                 )
             ))).
 
-% Alternative validation that checks if all inputs are satisfied by the selected nodes
-validate_node_inputs_from_selected(Nodes, SelectedNodes, Node) :-
-    node_inputs(Node, Inputs),
-    forall(member(Input, Inputs),
-           (member(ProducerNode, SelectedNodes),
-            ProducerNode \= Node,
-            node_outputs(ProducerNode, Outputs),
-            member(ProducedOutput, Outputs),
-            agent_data_match(Input, ProducedOutput))).
+
 
 % Check if a node's inputs can be satisfied by any nodes in the graph
 can_node_inputs_be_satisfied(Nodes, Node) :-
