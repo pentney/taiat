@@ -10,7 +10,7 @@ load_dotenv()
 from langchain_openai import ChatOpenAI
 
 from taiat.base import AgentGraphNodeSet, AgentData, State, TaiatQuery
-from taiat.builder import TaiatBuilder
+from taiat.enhanced_builder import EnhancedTaiatBuilder
 from taiat.engine import TaiatEngine
 from examples.ml_agents import (
     agent_roster,
@@ -55,7 +55,7 @@ def main():
     matcher.load_output_list(agent_roster)
     matcher.get_inputs_and_outputs(args.request)
 
-    builder = TaiatBuilder(llm=get_llm(), verbose=True)
+    builder = EnhancedTaiatBuilder(llm=get_llm(), verbose=True)
     builder.build(
         agent_roster,
         inputs=[
