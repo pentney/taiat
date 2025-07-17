@@ -212,4 +212,7 @@ run_test(Test) :-
 % Main entry point
 main :-
     run_all_tests,
-    halt. 
+    halt.
+
+% Automatically run main when program starts
+:- initialization(main). 
