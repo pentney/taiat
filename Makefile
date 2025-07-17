@@ -70,7 +70,7 @@ test:
 # Run Prolog-specific tests
 test-prolog: build-prolog
 	@echo "Running Prolog tests..."
-	@cd src/taiat/prolog && python test_path_planner.py
+	@python src/tests/test_path_planner.py
 	@echo "Running compiled Prolog tests..."
 	@for test_exec in src/taiat/prolog/compiled/test_*; do \
 		if [ -f "$$test_exec" ] && [ -x "$$test_exec" ]; then \

@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from taiat.base import AgentGraphNodeSet, AgentGraphNode, AgentData
-from prolog.optimized_prolog_interface import (
+from taiat.prolog.optimized_prolog_interface import (
     plan_taiat_path_global_optimized,
     OptimizedPrologPathPlanner,
 )

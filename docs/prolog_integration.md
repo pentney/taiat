@@ -153,7 +153,7 @@ pytest tests/ --ignore=tests/test_prolog_integration.py
 ### Test Structure
 
 - `tests/test_prolog_integration.py` - Integration tests for Prolog functionality
-- `src/taiat/prolog/test_path_planner.py` - Python tests for Prolog interface
+- `src/tests/test_path_planner.py` - Python tests for Prolog interface
 - `src/taiat/prolog/path_planner_test.pl` - Prolog unit tests
 
 ## Development Workflow
