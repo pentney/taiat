@@ -11,7 +11,7 @@ from taiat.builder import (
     TAIAT_TERMINAL_NODE,
     State,
 )
-from test_agents import TestNodeSet, TestNodeSetWithParams
+from .test_agents import TestNodeSet, TestNodeSetWithParams
 
 
 class DummyModel(FakeChatModel):

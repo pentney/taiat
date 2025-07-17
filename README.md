@@ -1,6 +1,44 @@
 # taiat
 Three Agents In A Trenchcoat (Taiat) is a tool built on top of Langgraph to make building dependency graphs among agents even easier. It takes a series of agents, the expected outputs and needed inputs of each, and then executes workflows specifically to produce a desired output. With the addition of a tool to select desired outputs from a natural language query, this can be a full solution for question answering with an agent workflow.
 
+## Installation
+
+### Prerequisites
+
+Taiat requires GNU Prolog (gprolog) for optimal path planning. Install it using your system's package manager:
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install gprolog
+```
+
+**macOS:**
+```bash
+brew install gprolog
+```
+
+**Other systems:** See the [GNU Prolog website](http://www.gprolog.org/) for installation instructions.
+
+### Installing Taiat
+
+1. Clone the repository and install dependencies:
+```bash
+git clone <repository-url>
+cd taiat
+pip install -r requirements.txt
+```
+
+2. Set up your API key:
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+```
+
+3. Verify the installation:
+```bash
+cd src
+PYTHONPATH=. python3 tests/test_path_planner.py
+```
+
 ## Overview
 
 Taiat can take:
@@ -11,6 +49,11 @@ Taiat can take:
 
 ... and produce an agent graph that will run all necessary agents, including any dependencies for the desired outputs.
 
+## Prolog Integration
+
+Taiat uses Prolog for intelligent path planning to determine the optimal execution sequence for agent workflows. This provides better performance for complex dependency graphs and ensures that parameter constraints are properly respected when matching agent inputs and outputs.
+
+The Prolog integration is enabled by default and provides the primary path planning mechanism for Taiat.
 
 ## Agent Graph
 
