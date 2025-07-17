@@ -1,6 +1,8 @@
 % Unit tests for the Taiat Path Planner
 % Run with: gplc path_planner_test.pl path_planner.pl -o test_path_planner && ./test_path_planner
 
+:- include('path_planner.pl').
+
 test_write :- write('DEBUG: test_write works!'), nl.
 
 % Test data
