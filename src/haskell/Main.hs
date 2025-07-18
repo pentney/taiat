@@ -9,10 +9,12 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Aeson (encode, decode, Value(..), object, (.=))
 import qualified Data.ByteString.Lazy as BS
-import System.IO (putStrLn)
+import System.IO (putStrLn, hFlush, stdout, stdin)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import System.Environment (getArgs)
 import qualified Data.HashMap.Strict as HM
+import Control.Monad (forever)
+import Data.Maybe (fromMaybe)
 
 -- Test data creation helpers
 createAgentData :: Text -> Map Text Text -> Text -> AgentData
@@ -85,8 +87,40 @@ main = do
     args <- getArgs
     case args of
         [] -> runPerformanceTests
+        ["--daemon"] -> runDaemonMode
         [inputFile] -> handleJsonInput inputFile
-        _ -> putStrLn "Usage: taiat-path-planner [input-file.json]"
+        _ -> putStrLn "Usage: taiat-path-planner [--daemon] [input-file.json]"
+
+-- Run in daemon mode - continuously read from stdin and write to stdout
+runDaemonMode :: IO ()
+runDaemonMode = do
+    -- Set line buffering for stdout
+    hFlush stdout
+    forever $ do
+        line <- getLine
+        case decode (BS.pack (map (fromIntegral . fromEnum) line)) of
+            Just request -> do
+                result <- processDaemonRequest request
+                BS.putStrLn $ encode result
+                hFlush stdout
+            Nothing -> do
+                BS.putStrLn $ encode $ object ["error" .= ("Invalid JSON input" :: String)]
+                hFlush stdout
+
+-- Process request in daemon mode
+processDaemonRequest :: Value -> IO Value
+processDaemonRequest (Object obj) =
+    case (HM.lookup "request_id" obj, HM.lookup "function" obj, HM.lookup "input" obj) of
+        (Just requestId, Just (String funcName), Just input) -> do
+            result <- case funcName of
+                "planExecutionPath" -> handlePlanExecutionPath input
+                "validateOutputs" -> handleValidateOutputs input
+                "availableOutputs" -> handleAvailableOutputs input
+                "hasCircularDependencies" -> handleHasCircularDependencies input
+                _ -> return $ object ["error" .= ("Unknown function: " ++ T.unpack funcName)]
+            return $ object ["request_id" .= requestId, "result" .= result]
+        _ -> return $ object ["error" .= ("Invalid request format" :: String)]
+processDaemonRequest _ = return $ object ["error" .= ("Invalid request format" :: String)]
 
 -- Handle JSON input from Python interface
 handleJsonInput :: String -> IO ()

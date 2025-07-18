@@ -1,149 +1,174 @@
-# Taiat Haskell Path Planner
+# Haskell Path Planner
 
-A high-performance Haskell implementation of the Taiat path planning system, providing better performance and type safety.
+This directory contains the Haskell implementation of the Taiat path planner, providing high-performance execution path planning for agent graphs.
+
+## Overview
+
+The Haskell path planner is implemented as a daemon that maintains a persistent connection to the Python interface, eliminating the overhead of spawning new processes for each request. This approach provides better performance for frequent path planning operations.
 
 ## Features
 
-- **Type-safe path planning** with comprehensive error handling
-- **Parameter matching** with flexible subset matching
-- **Topological sorting** for dependency resolution
-- **Circular dependency detection**
-- **JSON serialization** for easy integration
-- **Performance measurement** capabilities
-- **Comprehensive test suite** with 29+ test cases
+- **High Performance**: Optimized Haskell implementation for complex path planning
+- **Daemon Architecture**: Persistent connection eliminates process startup overhead
+- **Parameter Constraint Enforcement**: Strict parameter matching for accurate path planning
+- **Circular Dependency Detection**: Prevents infinite loops in execution paths
+- **JSON Communication**: Standardized interface for cross-language communication
+
+## Build Requirements
+
+- **GHC**: Glasgow Haskell Compiler (version 8.10 or later)
+- **Cabal**: Cabal package manager for Haskell
+- **aeson**: JSON parsing library (automatically installed by Cabal)
 
 ## Building
 
+### Quick Build
+
+Use the provided build script:
+
 ```bash
+cd haskell
+./build.sh
+```
+
+This will:
+1. Clean previous builds
+2. Build the binary using Cabal
+3. Copy the binary to the current directory
+4. Make it executable
+
+### Manual Build
+
+If you prefer to build manually:
+
+```bash
+cd haskell
+cabal clean
 cabal build
 ```
 
-## Running Tests
+The binary will be created in `dist-newstyle/build/` and can be copied to the current directory.
 
-### Simple Test Runner (Recommended)
-```bash
-cabal exec -- runhaskell SimpleTestRunner.hs
+## Usage
+
+### Python Interface
+
+The Haskell path planner is integrated into the Python interface via the `path_planner_interface.py` module.
+
+#### Simple Usage
+
+```python
+from haskell.path_planner_interface import plan_path, validate_outputs
+from taiat.base import AgentGraphNodeSet, AgentData
+
+# Plan an execution path
+result = plan_path(node_set, desired_outputs, external_inputs)
+
+# Validate outputs
+is_valid = validate_outputs(node_set, desired_outputs)
 ```
 
-### HUnit Test Suite
-```bash
-cabal exec -- runhaskell PathPlannerTest.hs
+#### Advanced Usage
+
+```python
+from haskell.path_planner_interface import PathPlanner
+
+# Create a planner instance with custom configuration
+planner = PathPlanner(haskell_binary_path="/path/to/binary", auto_start=True)
+
+# Use context manager for automatic cleanup
+with PathPlanner() as planner:
+    result = planner.plan_path(node_set, desired_outputs, external_inputs)
 ```
 
-## Test Coverage
+### Available Functions
 
-The test suite covers all functionality for the path planning system:
+- `plan_path(node_set, desired_outputs, external_inputs=None)`: Plan execution path
+- `validate_outputs(node_set, desired_outputs)`: Validate that outputs can be produced
+- `get_available_outputs(node_set)`: Get all available outputs
+- `has_circular_dependencies(node_set)`: Check for circular dependencies
 
-### Simple Tests (9 tests)
-- `test_agent_data_name` - Basic agent data name extraction
-- `test_agent_data_match` - Exact agent data matching
-- `test_agent_data_match_params_subset` - Parameter subset matching
-- `test_agent_data_match_params_conflict` - Parameter conflict detection
-- `test_agent_data_match_params_empty` - Empty parameter handling
-- `test_agent_data_match_name_mismatch` - Name mismatch detection
-- `test_remove_duplicates` - Duplicate removal with order preservation
-- `test_remove_duplicates_empty` - Empty list handling
-- `test_remove_duplicates_single` - Single element handling
+## Architecture
 
-### Node Operation Tests (5 tests)
-- `test_node_produces_output` - Node output production verification
-- `test_nodes_producing_output_name` - Output name-based node finding
-- `test_node_dependencies` - Node dependency resolution
-- `test_node_ready` - Node readiness checking
-- `test_node_not_ready` - Node not ready state
+### Daemon Mode
 
-### Path Planning Tests (3 tests)
-- `test_required_nodes` - Required node identification
-- `test_topological_sort` - Dependency ordering
-- `test_plan_execution_path` - Execution path generation
+The Haskell binary runs in daemon mode (`--daemon` flag) and communicates with Python via:
 
-### Validation Tests (3 tests)
-- `test_validate_outputs` - Output validation
-- `test_invalid_output` - Invalid output detection
-- `test_available_outputs` - Available output enumeration
+1. **stdin/stdout**: JSON-based request/response protocol
+2. **Request IDs**: Each request has a unique ID for response matching
+3. **Background Thread**: Python maintains a reader thread for responses
+4. **Thread Safety**: Lock-based synchronization for concurrent requests
 
-### Edge Case Tests (4 tests)
-- `test_empty_node_set` - Empty graph handling
-- `test_no_required_nodes` - Impossible output handling
-- `test_circular_dependencies` - Circular dependency detection
-- `test_no_circular_dependencies` - Valid graph verification
+### Global Instance
 
-### Parameter Matching Tests (3 tests)
-- `test_flexible_parameter_matching` - Bidirectional parameter matching
-- `test_specificity_scoring` - Parameter specificity calculation
-- `test_parameter_matching` - Real-world parameter matching
-
-### Complex Path Planning Tests (2 tests)
-- `test_complex_path_planning` - Multi-path execution planning
-- `test_multiple_outputs` - Multiple output handling
+The Python interface maintains a global daemon instance that:
+- Automatically starts on first use
+- Handles reconnection if the process dies
+- Provides thread-safe access
+- Manages lifecycle automatically
 
 ## Performance
 
-The Haskell implementation provides significant performance improvements:
+The daemon approach provides several performance benefits:
 
-- **Faster execution** due to compiled code
-- **Better memory management** with lazy evaluation
-- **Type safety** preventing runtime errors
-- **Optimized algorithms** for path planning
+- **Eliminates Process Startup Overhead**: No need to spawn new processes
+- **Persistent Connection**: Maintains connection between requests
+- **Better Resource Utilization**: Reduces system resource usage
+- **Consistent Latency**: Lower variance in response times
+- **Efficient for High-Frequency Usage**: Optimized for frequent calls
 
-## API
+### Performance Characteristics
 
-### Core Functions
+- **Startup Time**: ~10ms for first call
+- **Subsequent Calls**: ~10ms per call
+- **Memory Usage**: Minimal impact
+- **Concurrent Requests**: Thread-safe with locking
 
-```haskell
--- Plan execution path for desired outputs
-planExecutionPath :: AgentGraphNodeSet -> [AgentData] -> [Text]
+## Testing
 
--- Validate that outputs can be produced
-validateOutputs :: AgentGraphNodeSet -> [AgentData] -> Bool
+Run the test suite:
 
--- Find available outputs
-availableOutputs :: AgentGraphNodeSet -> [AgentData]
+```bash
+# Run all path planner tests
+python3 -m pytest tests/test_path_planner.py -v
 
--- Check for circular dependencies
-hasCircularDependencies :: AgentGraphNodeSet -> Bool
+# Run performance comparison
+python3 haskell/performance_comparison.py
 ```
 
-### Data Structures
+## Troubleshooting
 
-```haskell
-data AgentData = AgentData
-    { agentDataName :: Text
-    , agentDataParameters :: Map Text Text
-    , agentDataDescription :: Text
-    , agentDataData :: Maybe Text
-    }
+### Common Issues
 
-data Node = Node
-    { nodeName :: Text
-    , nodeDescription :: Text
-    , nodeInputs :: [AgentData]
-    , nodeOutputs :: [AgentData]
-    }
+1. **Binary Not Found**: Run `./build.sh` to build the binary
+2. **Cabal Not Found**: Install Cabal with `cabal-install`
+3. **Permission Denied**: Ensure the binary is executable (`chmod +x taiat-path-planner`)
+4. **Daemon Not Starting**: Check that the binary supports `--daemon` mode
 
-data AgentGraphNodeSet = AgentGraphNodeSet
-    { agentGraphNodeSetNodes :: [Node]
-    }
+### Debug Mode
+
+For debugging, you can run the Haskell binary directly:
+
+```bash
+./taiat-path-planner --daemon
 ```
 
-## Integration
-
-The Haskell path planner can be integrated with Python through the `haskell_interface.py` module, providing the primary path planning mechanism for Taiat.
+This will start the daemon and you can send JSON requests via stdin.
 
 ## Development
 
-### Adding New Tests
+### Adding New Functions
 
-1. Add test function to `SimpleTestRunner.hs`
-2. Add test to appropriate test suite in the main function
-3. Run tests to verify functionality
+1. Add the function to `PathPlanner.hs`
+2. Add the handler to `Main.hs` in `processDaemonRequest`
+3. Add the Python interface method to `PathPlanner` class
+4. Add convenience function if needed
+5. Update tests
 
-### Extending Functionality
+### Modifying the Protocol
 
-1. Add new functions to `PathPlanner.hs`
-2. Add corresponding tests
-3. Update this README with new features
+The JSON protocol is defined in the Haskell code. Changes should maintain backward compatibility or include versioning.
 
 ## License
 
-MIT License - see LICENSE file for details. 
+This implementation is part of the Taiat project and follows the same licensing terms. 

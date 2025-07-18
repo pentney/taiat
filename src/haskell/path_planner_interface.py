@@ -2,16 +2,17 @@
 Python interface for the Haskell path planner.
 
 This module provides a Python interface to the Haskell path planning implementation,
-allowing Python code to use the high-performance Haskell planner for determining
-execution paths in Taiat graphs.
+using the daemon approach for better performance and resource efficiency.
 """
 
 import json
 import os
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 # Import Taiat types
 try:
@@ -56,22 +57,34 @@ except ImportError:
 
 class PathPlanner:
     """
-    Python interface to the Haskell path planner.
+    Python interface to the Haskell path planner using daemon approach.
 
-    This class provides methods to interact with the compiled Haskell binary
-    for path planning operations.
+    This class maintains a persistent connection to the Haskell binary,
+    avoiding the overhead of spawning a new process for each request.
     """
 
-    def __init__(self, haskell_binary_path: Optional[str] = None):
+    def __init__(
+        self, haskell_binary_path: Optional[str] = None, auto_start: bool = True
+    ):
         """
         Initialize the PathPlanner.
 
         Args:
             haskell_binary_path: Optional path to the Haskell binary. If not provided,
                                 will attempt to find or build it automatically.
+            auto_start: Whether to automatically start the daemon on initialization.
         """
         self.haskell_binary_path = haskell_binary_path
-        self.available = self._check_availability()
+        self.process: Optional[subprocess.Popen] = None
+        self.lock = threading.Lock()
+        self.request_id = 0
+        self.pending_requests: Dict[int, Dict[str, Any]] = {}
+        self.results: Dict[int, Any] = {}
+        self.error: Optional[str] = None
+        self.available = False
+
+        if auto_start:
+            self.start()
 
     def _find_haskell_binary(self) -> str:
         """Find the Haskell binary in the expected location."""
@@ -79,7 +92,7 @@ class PathPlanner:
         haskell_dir = Path(__file__).parent
         binary_name = "taiat-path-planner"
 
-        # Check if binary exists in haskell directory
+        # Check if binary exists in haskell directory (copied from dist-newstyle)
         binary_path = haskell_dir / binary_name
         if binary_path.exists() and os.access(binary_path, os.X_OK):
             return str(binary_path)
@@ -129,42 +142,126 @@ class PathPlanner:
                 "Cabal not found. Please install Cabal to build the Haskell binary."
             )
 
-    def _check_availability(self) -> bool:
-        """Check if the Haskell binary is available and working."""
+    def start(self) -> None:
+        """Start the Haskell daemon process."""
+        if self.process is not None:
+            return  # Already running
+
         try:
             if self.haskell_binary_path is None:
                 self.haskell_binary_path = self._find_haskell_binary()
 
-            # Test the binary with a simple request
-            test_input = {
-                "function": "hasCircularDependencies",
-                "input": {"agentGraphNodeSetNodes": []},
-            }
+            # Start the Haskell process in daemon mode
+            self.process = subprocess.Popen(
+                [self.haskell_binary_path, "--daemon"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,  # Line buffered
+            )
 
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", delete=False
-            ) as f:
-                json.dump(test_input, f)
-                input_file = f.name
+            # Start the response reader thread
+            self.reader_thread = threading.Thread(
+                target=self._read_responses, daemon=True
+            )
+            self.reader_thread.start()
 
+            # Wait a moment for the process to start
+            time.sleep(0.1)
+
+            # Test the connection
+            if self.process.poll() is None:
+                self.available = True
+            else:
+                raise RuntimeError("Haskell daemon failed to start")
+
+        except Exception as e:
+            self.error = str(e)
+            self.available = False
+            if self.process:
+                self.process.terminate()
+                self.process = None
+            raise
+
+    def stop(self) -> None:
+        """Stop the Haskell daemon process."""
+        if self.process is not None:
+            self.process.terminate()
             try:
-                result = subprocess.run(
-                    [self.haskell_binary_path, input_file],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+            self.process = None
+        self.available = False
 
-                if result.returncode == 0:
-                    return True
-                else:
-                    return False
+    def _read_responses(self) -> None:
+        """Background thread to read responses from the Haskell process."""
+        try:
+            while self.process and self.process.poll() is None:
+                line = self.process.stdout.readline()
+                if not line:
+                    break
 
-            finally:
-                os.unlink(input_file)
+                try:
+                    response = json.loads(line.strip())
+                    request_id = response.get("request_id")
+                    if request_id is not None:
+                        with self.lock:
+                            self.results[request_id] = response
+                            if request_id in self.pending_requests:
+                                del self.pending_requests[request_id]
+                except json.JSONDecodeError:
+                    # Skip malformed JSON
+                    continue
+        except Exception as e:
+            self.error = f"Response reader error: {e}"
+            self.available = False
 
-        except Exception:
-            return False
+    def _send_request(
+        self, function_name: str, input_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Send a request to the Haskell daemon and wait for response."""
+        if not self.available or self.process is None:
+            raise RuntimeError("Haskell daemon is not available")
+
+        with self.lock:
+            self.request_id += 1
+            request_id = self.request_id
+
+        # Prepare the request
+        request = {
+            "request_id": request_id,
+            "function": function_name,
+            "input": input_data,
+        }
+
+        # Send the request
+        try:
+            request_json = json.dumps(request) + "\n"
+            self.process.stdin.write(request_json)
+            self.process.stdin.flush()
+        except Exception as e:
+            raise RuntimeError(f"Failed to send request: {e}")
+
+        # Wait for response
+        timeout = 30  # 30 seconds timeout
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            with self.lock:
+                if request_id in self.results:
+                    result = self.results.pop(request_id)
+                    return result
+
+            time.sleep(0.01)  # Small delay to avoid busy waiting
+
+        # Timeout
+        with self.lock:
+            if request_id in self.pending_requests:
+                del self.pending_requests[request_id]
+
+        raise RuntimeError("Request timed out")
 
     def _convert_agent_data_to_json(self, agent_data: AgentData) -> Dict[str, Any]:
         """Convert AgentData to JSON-serializable format."""
@@ -198,44 +295,12 @@ class PathPlanner:
             ]
         }
 
-    def _call_haskell_function(
-        self, function_name: str, input_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Call a Haskell function with the given input data."""
-        if not self.available:
-            raise RuntimeError("Haskell binary is not available")
-
-        # Create temporary input file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({"function": function_name, "input": input_data}, f)
-            input_file = f.name
-
-        try:
-            # Call Haskell binary
-            result = subprocess.run(
-                [self.haskell_binary_path, input_file],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-
-            if result.returncode != 0:
-                raise RuntimeError(f"Haskell execution failed: {result.stderr}")
-
-            # Parse output
-            output_data = json.loads(result.stdout)
-            return output_data
-
-        finally:
-            # Clean up temporary file
-            os.unlink(input_file)
-
     def plan_path(
         self,
         node_set: AgentGraphNodeSet,
         desired_outputs: List[AgentData],
         external_inputs: Optional[List[AgentData]] = None,
-    ) -> List[str]:
+    ) -> Optional[List[str]]:
         """
         Plan execution path using the Haskell implementation.
 
@@ -245,10 +310,10 @@ class PathPlanner:
             external_inputs: Optional list of external inputs that are available
 
         Returns:
-            List of node names in execution order
+            List of node names in execution order, or None if no path found
 
         Raises:
-            RuntimeError: If Haskell binary is not available or execution fails
+            RuntimeError: If Haskell daemon is not available or execution fails
         """
         input_data = {
             "nodeSet": self._convert_node_set_to_json(node_set),
@@ -263,8 +328,13 @@ class PathPlanner:
                 for input_data in external_inputs
             ]
 
-        result = self._call_haskell_function("planExecutionPath", input_data)
-        path_result = result.get("result", [])
+        result = self._send_request("planExecutionPath", input_data)
+        # Handle double-wrapped result from Haskell daemon
+        inner_result = result.get("result", {})
+        if isinstance(inner_result, dict):
+            path_result = inner_result.get("result", [])
+        else:
+            path_result = inner_result
         # Return None for empty paths to maintain compatibility with existing tests
         return None if not path_result else path_result
 
@@ -288,8 +358,12 @@ class PathPlanner:
             ],
         }
 
-        result = self._call_haskell_function("validateOutputs", input_data)
-        return result.get("result", False)
+        result = self._send_request("validateOutputs", input_data)
+        # Handle double-wrapped result from Haskell daemon
+        inner_result = result.get("result", {})
+        if isinstance(inner_result, dict):
+            return inner_result.get("result", False)
+        return inner_result
 
     def get_available_outputs(self, node_set: AgentGraphNodeSet) -> List[AgentData]:
         """
@@ -303,8 +377,13 @@ class PathPlanner:
         """
         input_data = {"nodeSet": self._convert_node_set_to_json(node_set)}
 
-        result = self._call_haskell_function("availableOutputs", input_data)
-        outputs_json = result.get("result", [])
+        result = self._send_request("availableOutputs", input_data)
+        # Handle double-wrapped result from Haskell daemon
+        inner_result = result.get("result", {})
+        if isinstance(inner_result, dict):
+            outputs_json = inner_result.get("result", [])
+        else:
+            outputs_json = inner_result
 
         return [
             AgentData(
@@ -328,8 +407,36 @@ class PathPlanner:
         """
         input_data = {"nodeSet": self._convert_node_set_to_json(node_set)}
 
-        result = self._call_haskell_function("hasCircularDependencies", input_data)
-        return result.get("result", False)
+        result = self._send_request("hasCircularDependencies", input_data)
+        # Handle double-wrapped result from Haskell daemon
+        inner_result = result.get("result", {})
+        if isinstance(inner_result, dict):
+            return inner_result.get("result", False)
+        return inner_result
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.stop()
+
+
+# Global daemon instance for convenience functions
+_global_daemon: Optional[PathPlanner] = None
+_daemon_lock = threading.Lock()
+
+
+def _get_global_daemon() -> PathPlanner:
+    """Get or create the global daemon instance."""
+    global _global_daemon
+    with _daemon_lock:
+        if _global_daemon is None or not _global_daemon.available:
+            if _global_daemon:
+                _global_daemon.stop()
+            _global_daemon = PathPlanner()
+        return _global_daemon
 
 
 # Convenience functions for backward compatibility
@@ -337,15 +444,14 @@ def plan_path(
     node_set: AgentGraphNodeSet,
     desired_outputs: List[AgentData],
     external_inputs: Optional[List[AgentData]] = None,
-) -> List[str]:
+) -> Optional[List[str]]:
     """
     Plan execution path using the Haskell implementation.
 
-    This is a convenience function that creates a PathPlanner instance
-    and calls plan_path on it.
+    This is a convenience function that uses the global daemon instance.
     """
-    planner = PathPlanner()
-    return planner.plan_path(node_set, desired_outputs, external_inputs)
+    daemon = _get_global_daemon()
+    return daemon.plan_path(node_set, desired_outputs, external_inputs)
 
 
 def validate_outputs(
@@ -354,30 +460,36 @@ def validate_outputs(
     """
     Validate that all desired outputs can be produced.
 
-    This is a convenience function that creates a PathPlanner instance
-    and calls validate_outputs on it.
+    This is a convenience function that uses the global daemon instance.
     """
-    planner = PathPlanner()
-    return planner.validate_outputs(node_set, desired_outputs)
+    daemon = _get_global_daemon()
+    return daemon.validate_outputs(node_set, desired_outputs)
 
 
 def get_available_outputs(node_set: AgentGraphNodeSet) -> List[AgentData]:
     """
     Get all outputs that can be produced by the node set.
 
-    This is a convenience function that creates a PathPlanner instance
-    and calls get_available_outputs on it.
+    This is a convenience function that uses the global daemon instance.
     """
-    planner = PathPlanner()
-    return planner.get_available_outputs(node_set)
+    daemon = _get_global_daemon()
+    return daemon.get_available_outputs(node_set)
 
 
 def has_circular_dependencies(node_set: AgentGraphNodeSet) -> bool:
     """
     Check if the node set has circular dependencies.
 
-    This is a convenience function that creates a PathPlanner instance
-    and calls has_circular_dependencies on it.
+    This is a convenience function that uses the global daemon instance.
     """
-    planner = PathPlanner()
-    return planner.has_circular_dependencies(node_set)
+    daemon = _get_global_daemon()
+    return daemon.has_circular_dependencies(node_set)
+
+
+def stop_global_daemon() -> None:
+    """Stop the global daemon instance."""
+    global _global_daemon
+    with _daemon_lock:
+        if _global_daemon:
+            _global_daemon.stop()
+            _global_daemon = None
