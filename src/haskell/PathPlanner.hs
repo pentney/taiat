@@ -178,10 +178,12 @@ canNodeInputsBeSatisfied nodes node =
     inputCanBeSatisfied input =
         let producers = nodesProducingOutput nodes input
         in if null producers
-           then -- Check if this input is truly external
+           then -- Check if this input is truly external (no producers with matching parameters)
                let inputName = agentDataName' input
                    potentialProducers = filter (\n -> any (\o -> agentDataName' o == inputName) (nodeOutputs' n)) nodes
-               in null potentialProducers  -- External if no potential producers
+                   -- Only consider it external if no potential producers have matching parameters
+                   matchingProducers = filter (\n -> any (agentDataMatch input) (nodeOutputs' n)) potentialProducers
+               in null matchingProducers  -- External if no producers with matching parameters
            else -- Check if any producer can actually satisfy this input
                any (\producer -> any (agentDataMatch input) (nodeOutputs' producer)) producers
 
@@ -193,9 +195,13 @@ requiredNodesFromOutputs nodes (output:rest) desiredOutputs acc =
     in if null producers
        then Nothing  -- Return Nothing instead of error
        else case findMostSpecificProducerWithContext nodes output producers desiredOutputs of
-            [producer] -> case requiredNodesFromNode nodes producer desiredOutputs acc of
-                Just accWithNode -> requiredNodesFromOutputs nodes rest desiredOutputs accWithNode
-                Nothing -> Nothing
+            [producer] -> 
+                -- Check if the producer can actually be executed (all inputs satisfied)
+                if canNodeInputsBeSatisfied nodes producer
+                   then case requiredNodesFromNode nodes producer desiredOutputs acc of
+                        Just accWithNode -> requiredNodesFromOutputs nodes rest desiredOutputs accWithNode
+                        Nothing -> Nothing
+                   else Nothing  -- Producer cannot be executed
             [] -> Nothing  -- No suitable producer found
             _ -> Nothing  -- Multiple producers but none is most specific
 
@@ -205,12 +211,15 @@ requiredNodesFromNode nodes node desiredOutputs acc
     | node `elem` acc = Just acc
     | otherwise =
         let inputs = nodeInputs' node
-            validInputs = filter (\input -> 
+            -- Check if all inputs can be satisfied with matching parameters
+            allInputsSatisfiable = all (\input -> 
                 let producers = nodesProducingOutput nodes input
-                in not (null producers) && any (\p -> any (agentDataMatch input) (nodeOutputs' p)) producers) inputs
-        in case requiredNodesFromOutputs nodes validInputs desiredOutputs acc of
-            Just accWithDeps -> Just (accWithDeps ++ [node])
-            Nothing -> Nothing
+                in not (null producers)) inputs
+        in if allInputsSatisfiable
+           then case requiredNodesFromOutputs nodes inputs desiredOutputs acc of
+                Just accWithDeps -> Just (accWithDeps ++ [node])
+                Nothing -> Nothing
+           else Nothing  -- Node has inputs that cannot be satisfied
 
 -- Find all nodes needed to produce the desired outputs
 requiredNodes :: [Node] -> [AgentData] -> Maybe [Node]

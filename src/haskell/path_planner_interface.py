@@ -264,7 +264,9 @@ class PathPlanner:
             ]
 
         result = self._call_haskell_function("planExecutionPath", input_data)
-        return result.get("result", [])
+        path_result = result.get("result", [])
+        # Return None for empty paths to maintain compatibility with existing tests
+        return None if not path_result else path_result
 
     def validate_outputs(
         self, node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
