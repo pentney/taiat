@@ -115,7 +115,17 @@ class MLOutputMatcher(OutputMatcher):
         response = self.llm.invoke(request)
         if response and response.content:
             print("response", response.content)
-            content = "\n".join(response.content.split("\n")[1:-1])
+            content = response.content.strip()
+
+            # Handle markdown code blocks if present
+            if content.startswith("```json"):
+                content = content[7:]  # Remove ```json
+            if content.startswith("```"):
+                content = content[3:]  # Remove ```
+            if content.endswith("```"):
+                content = content[:-3]  # Remove ```
+
+            content = content.strip()
             result = json.loads(content)
             self.dataset = result["dataset"]
             self.outputs = self.process_outputs(result["outputs"])

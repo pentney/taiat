@@ -61,13 +61,9 @@ class TaiatManager:
                 test_result = plan_path(node_set, [])
                 self.haskell_available = True
                 if self.verbose:
-                    print(
-                        "Haskell path planner initialized successfully"
-                    )
+                    print("Haskell path planner initialized successfully")
             except Exception as e:
-                print(
-                    f"Warning: Haskell path planner not available: {e}"
-                )
+                print(f"Warning: Haskell path planner not available: {e}")
                 self.haskell_available = False
         else:
             self.haskell_available = False
@@ -110,9 +106,7 @@ class TaiatManager:
                 self.planned_execution_path = execution_path
                 self.current_path_index = 0
                 if self.verbose:
-                    print(
-                        f"Haskell planned execution path: {execution_path}"
-                    )
+                    print(f"Haskell planned execution path: {execution_path}")
                 return True
             else:
                 if self.verbose:
@@ -166,9 +160,7 @@ class TaiatManager:
             return list(set(available_outputs))  # Remove duplicates
         except Exception as e:
             if self.verbose:
-                print(
-                    f"Error getting available outputs with Haskell: {e}"
-                )
+                print(f"Error getting available outputs with Haskell: {e}")
             return []
 
     def make_router_function(self, node) -> Callable:

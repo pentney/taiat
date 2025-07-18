@@ -45,7 +45,7 @@ executable taiat-path-planner
 
 test-suite taiat-path-planner-test
     type:                exitcode-stdio-1.0
-    main-is:             PathPlannerTest.hs
+    main-is:             test_path_planner.hs
     build-depends:       base ^>=4.13.0.0
                        , taiat-path-planner
                        , HUnit
