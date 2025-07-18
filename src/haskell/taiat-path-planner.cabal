@@ -1,0 +1,59 @@
+cabal-version: 2.4
+name:                taiat-path-planner
+version:             0.1.0.0
+license:             MIT
+author:              Taiat Team
+maintainer:          taiat@example.com
+build-depends:       base ^>=4.13.0.0
+                   , aeson
+                   , text
+                   , bytestring
+                   , time
+                   , unordered-containers
+                   , containers
+                   , HUnit
+
+default-language:    Haskell2010
+ghc-options:         -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                   -Wincomplete-uni-patterns -Wmissing-export-lists
+                   -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+
+library
+    exposed-modules:     PathPlanner
+    build-depends:       base ^>=4.13.0.0
+                       , aeson
+                       , text
+                       , bytestring
+                       , time
+                       , unordered-containers
+                       , containers
+    hs-source-dirs:      .
+    default-language:    Haskell2010
+
+executable taiat-path-planner
+    main-is:             Main.hs
+    build-depends:       base ^>=4.13.0.0
+                       , taiat-path-planner
+                       , aeson
+                       , text
+                       , bytestring
+                       , time
+                       , unordered-containers
+                       , containers
+    hs-source-dirs:      .
+    default-language:    Haskell2010
+
+test-suite taiat-path-planner-test
+    type:                exitcode-stdio-1.0
+    main-is:             PathPlannerTest.hs
+    build-depends:       base ^>=4.13.0.0
+                       , taiat-path-planner
+                       , HUnit
+                       , aeson
+                       , text
+                       , bytestring
+                       , time
+                       , unordered-containers
+                       , containers
+    hs-source-dirs:      .
+    default-language:    Haskell2010 
