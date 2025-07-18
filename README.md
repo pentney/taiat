@@ -5,19 +5,19 @@ Three Agents In A Trenchcoat (Taiat) is a tool built on top of Langgraph to make
 
 ### Prerequisites
 
-Taiat requires GNU Prolog (gprolog) for optimal path planning. Install it using your system's package manager:
+Taiat requires GHC (Glasgow Haskell Compiler) and Cabal for optimal path planning. Install them using your system's package manager:
 
 **Ubuntu/Debian:**
 ```bash
-sudo apt-get install gprolog
+sudo apt-get install ghc cabal-install
 ```
 
 **macOS:**
 ```bash
-brew install gprolog
+brew install ghc cabal-install
 ```
 
-**Other systems:** See the [GNU Prolog website](http://www.gprolog.org/) for installation instructions.
+**Other systems:** See the [Haskell Platform website](https://www.haskell.org/platform/) for installation instructions.
 
 ### Installing Taiat
 
@@ -28,12 +28,18 @@ cd taiat
 pip install -r requirements.txt
 ```
 
-2. Set up your API key:
+2. Build the Haskell path planner:
+```bash
+cd src/haskell
+cabal build
+```
+
+3. Set up your API key:
 ```bash
 export OPENAI_API_KEY="your-openai-api-key"
 ```
 
-3. Verify the installation:
+4. Verify the installation:
 ```bash
 cd src
 PYTHONPATH=. python3 tests/test_path_planner.py
@@ -49,11 +55,15 @@ Taiat can take:
 
 ... and produce an agent graph that will run all necessary agents, including any dependencies for the desired outputs.
 
-## Prolog Integration
+## Haskell Integration
 
-Taiat uses Prolog for intelligent path planning to determine the optimal execution sequence for agent workflows. This provides better performance for complex dependency graphs and ensures that parameter constraints are properly respected when matching agent inputs and outputs.
+Taiat uses Haskell for intelligent path planning to determine the optimal execution sequence for agent workflows. This provides better performance for complex dependency graphs and ensures that parameter constraints are properly respected when matching agent inputs and outputs.
 
-The Prolog integration is enabled by default and provides the primary path planning mechanism for Taiat.
+The Haskell integration is enabled by default and provides the primary path planning mechanism for Taiat, offering:
+- **Type Safety**: Strong static typing prevents runtime errors
+- **Performance**: Optimized functional algorithms for better performance
+- **Maintainability**: Cleaner, more readable code structure
+- **Integration**: Better Python integration through JSON serialization
 
 ## Agent Graph
 

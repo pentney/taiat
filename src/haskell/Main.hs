@@ -118,8 +118,21 @@ handlePlanExecutionPath (Object inputObj) =
         (Just nodeSetJson, Just desiredOutputsJson) ->
             case (decode $ encode nodeSetJson, decode $ encode desiredOutputsJson) of
                 (Just nodeSet, Just desiredOutputs) ->
-                    let result = planExecutionPath nodeSet desiredOutputs
-                    in return $ object ["result" .= result]
+                    let externalInputs = case HM.lookup "externalInputs" inputObj of
+                            Just externalInputsJson -> 
+                                case decode $ encode externalInputsJson of
+                                    Just inputs -> inputs
+                                    Nothing -> []
+                            Nothing -> []
+                        -- Add external inputs as virtual nodes that produce them
+                        externalNodes = map (\input -> Node (agentDataName' input <> "_external") 
+                                                           ("External input: " <> agentDataName' input) 
+                                                           [] 
+                                                           [input]) externalInputs
+                        extendedNodeSet = AgentGraphNodeSet (externalNodes ++ agentGraphNodeSetNodes nodeSet)
+                    in do
+                        let result = planExecutionPath extendedNodeSet desiredOutputs
+                        return $ object ["result" .= result]
                 _ -> return $ object ["error" .= ("Invalid data format" :: String)]
         _ -> return $ object ["error" .= ("Missing required fields" :: String)]
 handlePlanExecutionPath _ = return $ object ["error" .= ("Invalid input format" :: String)]

@@ -1,8 +1,8 @@
 """
-TaiatManager with Global Optimized Prolog Path Planner Integration.
+TaiatManager with Haskell Path Planner Integration.
 
-This module provides TaiatManager that uses the global optimized
-Prolog path planner to determine optimal execution sequences for Taiat queries.
+This module provides TaiatManager that uses the Haskell
+path planner to determine optimal execution sequences for Taiat queries.
 """
 
 from functools import partial
@@ -14,16 +14,16 @@ from threading import RLock
 import time
 from langgraph.graph import START
 
-# Import the global optimized Prolog path planner
-from prolog.taiat_path_planner import plan_taiat_path_global
+# Import the Haskell path planner
+from haskell.path_planner_interface import plan_path
 
 
 class TaiatManager:
     """
-    TaiatManager that uses global optimized Prolog path planning for optimal agent selection.
+    TaiatManager that uses Haskell path planning for optimal agent selection.
 
-    This manager combines the existing TaiatManager functionality with the global optimized
-    Prolog path planner to provide better execution planning and agent selection.
+    This manager combines the existing TaiatManager functionality with the Haskell
+    path planner to provide better execution planning and agent selection.
     """
 
     def __init__(
@@ -33,7 +33,7 @@ class TaiatManager:
         wait_interval: int = 5,
         verbose: bool = False,
         metrics: Optional[TaiatMetrics] = None,
-        use_prolog_planning: bool = True,
+        use_haskell_planning: bool = True,
         fallback_to_original: bool = True,
     ):
         """
@@ -45,32 +45,32 @@ class TaiatManager:
             wait_interval: Interval between status checks
             verbose: Enable verbose output
             metrics: Metrics collection object
-            use_prolog_planning: Whether to use global optimized Prolog path planning
-            fallback_to_original: Whether to fall back to original planning if Prolog fails
+            use_haskell_planning: Whether to use Haskell path planning
+            fallback_to_original: Whether to fall back to original planning if Haskell fails
         """
         self.interval = wait_interval
         self.node_set = node_set
         self.reverse_plan_edges = reverse_plan_edges
-        self.use_prolog_planning = use_prolog_planning
+        self.use_haskell_planning = use_haskell_planning
         self.fallback_to_original = fallback_to_original
 
-        # Initialize global optimized Prolog path planner if enabled
-        if self.use_prolog_planning:
+        # Initialize Haskell path planner if enabled
+        if self.use_haskell_planning:
             try:
-                # Test the global optimized Prolog planner
-                test_result = plan_taiat_path_global(node_set, [])
-                self.prolog_available = True
+                # Test the Haskell planner
+                test_result = plan_path(node_set, [])
+                self.haskell_available = True
                 if self.verbose:
                     print(
-                        "Global optimized Prolog path planner initialized successfully"
+                        "Haskell path planner initialized successfully"
                     )
             except Exception as e:
                 print(
-                    f"Warning: Global optimized Prolog path planner not available: {e}"
+                    f"Warning: Haskell path planner not available: {e}"
                 )
-                self.prolog_available = False
+                self.haskell_available = False
         else:
-            self.prolog_available = False
+            self.haskell_available = False
 
         # Build reverse graph to find next node to run (original logic)
         self.plan_edges = {k.name: [] for k in self.node_set.nodes + [START_NODE]}
@@ -83,7 +83,7 @@ class TaiatManager:
         self.output_status[START] = "running"
         self.output_status[TAIAT_TERMINAL_NODE] = "pending"
 
-        # Execution path from global optimized Prolog planner
+        # Execution path from Haskell planner
         self.planned_execution_path = []
         self.current_path_index = 0
 
@@ -91,9 +91,9 @@ class TaiatManager:
         self.verbose = verbose
         self.metrics = metrics
 
-    def plan_execution_with_prolog(self, desired_outputs: List[AgentData]) -> bool:
+    def plan_execution_with_haskell(self, desired_outputs: List[AgentData]) -> bool:
         """
-        Plan execution path using global optimized Prolog path planner.
+        Plan execution path using Haskell path planner.
 
         Args:
             desired_outputs: List of desired outputs to produce
@@ -101,33 +101,33 @@ class TaiatManager:
         Returns:
             True if planning was successful, False otherwise
         """
-        if not self.prolog_available:
+        if not self.haskell_available:
             return False
 
         try:
-            execution_path = plan_taiat_path_global(self.node_set, desired_outputs)
+            execution_path = plan_taiat_path(self.node_set, desired_outputs)
             if execution_path is not None:
                 self.planned_execution_path = execution_path
                 self.current_path_index = 0
                 if self.verbose:
                     print(
-                        f"Global optimized Prolog planned execution path: {execution_path}"
+                        f"Haskell planned execution path: {execution_path}"
                     )
                 return True
             else:
                 if self.verbose:
                     print(
-                        "Global optimized Prolog path planning failed, falling back to original method"
+                        "Haskell path planning failed, falling back to original method"
                     )
                 return False
         except Exception as e:
             if self.verbose:
-                print(f"Error in global optimized Prolog path planning: {e}")
+                print(f"Error in Haskell path planning: {e}")
             return False
 
-    def validate_outputs_with_prolog(self, desired_outputs: List[AgentData]) -> bool:
+    def validate_outputs_with_haskell(self, desired_outputs: List[AgentData]) -> bool:
         """
-        Validate that desired outputs can be produced using global optimized Prolog planner.
+        Validate that desired outputs can be produced using Haskell planner.
 
         Args:
             desired_outputs: List of desired outputs to validate
@@ -135,26 +135,26 @@ class TaiatManager:
         Returns:
             True if all outputs can be produced, False otherwise
         """
-        if not self.prolog_available:
+        if not self.haskell_available:
             return False
 
         try:
             # Try to plan a path - if it succeeds, the outputs are valid
-            execution_path = plan_taiat_path_global(self.node_set, desired_outputs)
+            execution_path = plan_path(self.node_set, desired_outputs)
             return execution_path is not None
         except Exception as e:
             if self.verbose:
-                print(f"Error in global optimized Prolog output validation: {e}")
+                print(f"Error in Haskell output validation: {e}")
             return False
 
-    def get_available_outputs_with_prolog(self) -> List[str]:
+    def get_available_outputs_with_haskell(self) -> List[str]:
         """
-        Get all available outputs using global optimized Prolog planner.
+        Get all available outputs using Haskell planner.
 
         Returns:
             List of available output names
         """
-        if not self.prolog_available:
+        if not self.haskell_available:
             return []
 
         try:
@@ -167,7 +167,7 @@ class TaiatManager:
         except Exception as e:
             if self.verbose:
                 print(
-                    f"Error getting available outputs with global optimized Prolog: {e}"
+                    f"Error getting available outputs with Haskell: {e}"
                 )
             return []
 
@@ -184,9 +184,9 @@ class TaiatManager:
         node: str,
     ) -> str | None:
         """
-        Enhanced router function that uses global optimized Prolog planning when available.
+        Enhanced router function that uses Haskell planning when available.
 
-        This function combines global optimized Prolog path planning with the original dependency-based
+        This function combines Haskell path planning with the original dependency-based
         routing logic for optimal agent selection.
         """
         with self.status_lock:
@@ -195,7 +195,7 @@ class TaiatManager:
         if self.verbose:
             print(f"Node {node} complete, looking for next node")
 
-        # If we have a global optimized Prolog-planned path, try to follow it
+        # If we have a Haskell-planned path, try to follow it
         if self.planned_execution_path and self.current_path_index < len(
             self.planned_execution_path
         ):
@@ -263,7 +263,7 @@ class TaiatManager:
 
     def _original_router_logic(self, node: str) -> str | None:
         """
-        Original router logic as fallback when Prolog planning is not available.
+        Original router logic as fallback when Haskell planning is not available.
 
         Args:
             node: Name of the completed node
@@ -304,7 +304,7 @@ class TaiatManager:
 
     def get_execution_statistics(self) -> Dict[str, Any]:
         """
-        Get execution statistics including Prolog planning information.
+        Get execution statistics including Haskell planning information.
 
         Returns:
             Dictionary with execution statistics
@@ -320,7 +320,7 @@ class TaiatManager:
             "running_nodes": sum(
                 1 for status in self.output_status.values() if status == "running"
             ),
-            "prolog_available": self.prolog_available,
+            "haskell_available": self.haskell_available,
             "planned_execution_path": self.planned_execution_path,
             "current_path_index": self.current_path_index,
         }
@@ -338,7 +338,7 @@ def create_manager(
     **kwargs,
 ) -> TaiatManager:
     """
-    Create a TaiatManager with global optimized Prolog path planning.
+    Create a TaiatManager with Haskell path planning.
 
     Args:
         node_set: Set of available agent nodes
@@ -353,18 +353,18 @@ def create_manager(
         node_set=node_set, reverse_plan_edges=reverse_plan_edges, **kwargs
     )
 
-    # Plan execution with global optimized Prolog if desired outputs are provided
-    if desired_outputs and manager.use_prolog_planning:
-        manager.plan_execution_with_prolog(desired_outputs)
+    # Plan execution with Haskell if desired outputs are provided
+    if desired_outputs and manager.use_haskell_planning:
+        manager.plan_execution_with_haskell(desired_outputs)
 
     return manager
 
 
-def validate_query_with_prolog(
+def validate_query_with_haskell(
     node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
 ) -> bool:
     """
-    Validate a query using global optimized Prolog path planner.
+    Validate a query using Haskell path planner.
 
     Args:
         node_set: Set of available agent nodes
@@ -374,17 +374,17 @@ def validate_query_with_prolog(
         True if the query can be satisfied, False otherwise
     """
     try:
-        execution_path = plan_taiat_path_global(node_set, desired_outputs)
+        execution_path = plan_path(node_set, desired_outputs)
         return execution_path is not None
     except Exception:
         return False
 
 
-def plan_query_with_prolog(
+def plan_query_with_haskell(
     node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
 ) -> Optional[List[str]]:
     """
-    Plan a query using global optimized Prolog path planner.
+    Plan a query using Haskell path planner.
 
     Args:
         node_set: Set of available agent nodes
@@ -394,6 +394,6 @@ def plan_query_with_prolog(
         List of node names in execution order, or None if planning fails
     """
     try:
-        return plan_taiat_path_global(node_set, desired_outputs)
+        return plan_path(node_set, desired_outputs)
     except Exception:
         return None

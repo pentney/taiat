@@ -1,121 +1,110 @@
-# Haskell Path Planner for Taiat
+# Taiat Haskell Path Planner
 
-This directory contains a Haskell implementation of the Taiat path planner, designed to replace the Prolog version with better performance and type safety.
-
-## Overview
-
-The Haskell path planner provides the same functionality as the Prolog version but with several advantages:
-
-- **Type Safety**: Strong static typing prevents many runtime errors
-- **Performance**: Optimized functional algorithms for better performance
-- **Maintainability**: Cleaner, more readable code structure
-- **Integration**: Better Python integration through JSON serialization
+A high-performance Haskell implementation of the Taiat path planning system, providing better performance and type safety.
 
 ## Features
 
-- Dependency resolution with parameter matching
-- Topological sorting for execution order
-- Constraint satisfaction and validation
-- Circular dependency detection
-- Performance measurement capabilities
+- **Type-safe path planning** with comprehensive error handling
+- **Parameter matching** with flexible subset matching
+- **Topological sorting** for dependency resolution
+- **Circular dependency detection**
+- **JSON serialization** for easy integration
+- **Performance measurement** capabilities
+- **Comprehensive test suite** with 29+ test cases
 
-## Requirements
-
-- GHC (Glasgow Haskell Compiler) 8.10 or later
-- Cabal (Haskell package manager)
-- Python 3.7+ (for the interface)
-
-## Installation
-
-### 1. Install Haskell Platform
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get update
-sudo apt-get install haskell-platform
-```
-
-**macOS:**
-```bash
-brew install ghc cabal-install
-```
-
-**Windows:**
-Download from [Haskell Platform](https://www.haskell.org/platform/)
-
-### 2. Build the Haskell Implementation
+## Building
 
 ```bash
-cd taiat/src/haskell
-chmod +x build.sh
-./build.sh
-```
-
-Or manually:
-```bash
-cabal update
 cabal build
 ```
 
-### 3. Test the Installation
+## Running Tests
 
+### Simple Test Runner (Recommended)
 ```bash
-# Test the binary directly
-./taiat-path-planner
-
-# Test the Python interface
-python3 haskell_interface.py
+cabal exec -- runhaskell SimpleTestRunner.hs
 ```
 
-## Usage
-
-### Python Interface
-
-```python
-from haskell.haskell_interface import HaskellPathPlanner, plan_taiat_path
-
-# Create planner instance
-planner = HaskellPathPlanner()
-
-# Plan execution path
-execution_path = planner.plan_path(node_set, desired_outputs)
-print(f"Execution path: {execution_path}")
-
-# Validate outputs
-is_valid = planner.validate_outputs(node_set, desired_outputs)
-print(f"Outputs can be produced: {is_valid}")
-
-# Get available outputs
-available_outputs = planner.get_available_outputs(node_set)
-print(f"Available outputs: {len(available_outputs)}")
+### HUnit Test Suite
+```bash
+cabal exec -- runhaskell PathPlannerTest.hs
 ```
 
-### Convenience Functions
+## Test Coverage
 
-```python
-from haskell.haskell_interface import plan_taiat_path, validate_taiat_outputs
+The test suite covers all functionality for the path planning system:
 
-# Direct function calls
-execution_path = plan_taiat_path(node_set, desired_outputs)
-is_valid = validate_taiat_outputs(node_set, desired_outputs)
+### Simple Tests (9 tests)
+- `test_agent_data_name` - Basic agent data name extraction
+- `test_agent_data_match` - Exact agent data matching
+- `test_agent_data_match_params_subset` - Parameter subset matching
+- `test_agent_data_match_params_conflict` - Parameter conflict detection
+- `test_agent_data_match_params_empty` - Empty parameter handling
+- `test_agent_data_match_name_mismatch` - Name mismatch detection
+- `test_remove_duplicates` - Duplicate removal with order preservation
+- `test_remove_duplicates_empty` - Empty list handling
+- `test_remove_duplicates_single` - Single element handling
+
+### Node Operation Tests (5 tests)
+- `test_node_produces_output` - Node output production verification
+- `test_nodes_producing_output_name` - Output name-based node finding
+- `test_node_dependencies` - Node dependency resolution
+- `test_node_ready` - Node readiness checking
+- `test_node_not_ready` - Node not ready state
+
+### Path Planning Tests (3 tests)
+- `test_required_nodes` - Required node identification
+- `test_topological_sort` - Dependency ordering
+- `test_plan_execution_path` - Execution path generation
+
+### Validation Tests (3 tests)
+- `test_validate_outputs` - Output validation
+- `test_invalid_output` - Invalid output detection
+- `test_available_outputs` - Available output enumeration
+
+### Edge Case Tests (4 tests)
+- `test_empty_node_set` - Empty graph handling
+- `test_no_required_nodes` - Impossible output handling
+- `test_circular_dependencies` - Circular dependency detection
+- `test_no_circular_dependencies` - Valid graph verification
+
+### Parameter Matching Tests (3 tests)
+- `test_flexible_parameter_matching` - Bidirectional parameter matching
+- `test_specificity_scoring` - Parameter specificity calculation
+- `test_parameter_matching` - Real-world parameter matching
+
+### Complex Path Planning Tests (2 tests)
+- `test_complex_path_planning` - Multi-path execution planning
+- `test_multiple_outputs` - Multiple output handling
+
+## Performance
+
+The Haskell implementation provides significant performance improvements:
+
+- **Faster execution** due to compiled code
+- **Better memory management** with lazy evaluation
+- **Type safety** preventing runtime errors
+- **Optimized algorithms** for path planning
+
+## API
+
+### Core Functions
+
+```haskell
+-- Plan execution path for desired outputs
+planExecutionPath :: AgentGraphNodeSet -> [AgentData] -> [Text]
+
+-- Validate that outputs can be produced
+validateOutputs :: AgentGraphNodeSet -> [AgentData] -> Bool
+
+-- Find available outputs
+availableOutputs :: AgentGraphNodeSet -> [AgentData]
+
+-- Check for circular dependencies
+hasCircularDependencies :: AgentGraphNodeSet -> Bool
 ```
 
-### Performance Comparison
-
-```python
-from haskell.performance_comparison import run_performance_suite
-
-# Run performance tests
-results = run_performance_suite()
-
-# Compare with Prolog implementation
-from haskell.haskell_interface import compare_performance
-comparison = compare_performance(node_set, desired_outputs, prolog_planner)
-```
-
-## Architecture
-
-### Core Data Structures
+### Data Structures
 
 ```haskell
 data AgentData = AgentData
@@ -137,147 +126,24 @@ data AgentGraphNodeSet = AgentGraphNodeSet
     }
 ```
 
-### Key Algorithms
+## Integration
 
-1. **Parameter Matching**: `parametersSubset` and `agentDataMatch`
-2. **Dependency Resolution**: `nodeDependencies` and `requiredNodes`
-3. **Topological Sorting**: `topologicalSort`
-4. **Constraint Satisfaction**: `canNodeInputsBeSatisfied`
+The Haskell path planner can be integrated with Python through the `haskell_interface.py` module, providing the primary path planning mechanism for Taiat.
 
-## Performance
+## Development
 
-The Haskell implementation typically provides:
+### Adding New Tests
 
-- **2-10x faster execution** for small to medium graphs
-- **Better memory efficiency** for large graphs
-- **Predictable performance** with no garbage collection pauses
-- **Scalable algorithms** that handle complex dependency graphs
+1. Add test function to `SimpleTestRunner.hs`
+2. Add test to appropriate test suite in the main function
+3. Run tests to verify functionality
 
-### Benchmark Results
+### Extending Functionality
 
-Typical performance improvements over Prolog:
-
-- Simple linear pipeline: 3-5x faster
-- Complex multi-path dependencies: 5-8x faster
-- Large graphs (100+ nodes): 8-15x faster
-- Very large graphs (500+ nodes): 10-20x faster
-
-## Integration with Taiat
-
-The Haskell path planner can be used as a drop-in replacement for the Prolog version:
-
-```python
-# In your TaiatBuilder
-from haskell.haskell_interface import HaskellPathPlanner
-
-class TaiatBuilder:
-    def __init__(self, llm, verbose=False, use_haskell_planning=True):
-        self.use_haskell_planning = use_haskell_planning
-        if use_haskell_planning:
-            self.haskell_planner = HaskellPathPlanner()
-    
-    def get_plan(self, query, goal_outputs):
-        if self.use_haskell_planning and self.haskell_planner.available:
-            # Use Haskell planner
-            execution_path = self.haskell_planner.plan_path(self.node_set, goal_outputs)
-            return self._build_execution_graph(execution_path)
-        else:
-            # Fallback to original logic
-            return self._get_plan_original(query, goal_outputs)
-```
-
-## Testing
-
-### Unit Tests
-
-```bash
-# Run Haskell unit tests
-cabal test
-
-# Run Python interface tests
-python3 -m pytest test_haskell_interface.py
-```
-
-### Performance Tests
-
-```bash
-# Run performance comparison
-python3 performance_comparison.py
-
-# Run specific test cases
-python3 -c "
-from performance_comparison import create_simple_test_case, run_single_test
-node_set, outputs = create_simple_test_case()
-result = run_single_test('Test', node_set, outputs)
-print(result)
-"
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Haskell binary not found**
-   ```bash
-   # Rebuild the binary
-   ./build.sh
-   ```
-
-2. **Cabal build fails**
-   ```bash
-   # Update cabal and try again
-   cabal update
-   cabal build
-   ```
-
-3. **Python import errors**
-   ```bash
-   # Ensure you're in the right directory
-   cd taiat/src/haskell
-   python3 haskell_interface.py
-   ```
-
-### Debug Mode
-
-Enable debug output by setting environment variables:
-
-```bash
-export TAIAT_HASKELL_DEBUG=1
-python3 haskell_interface.py
-```
-
-## Migration from Prolog
-
-To migrate from the Prolog implementation:
-
-1. **Install Haskell dependencies** (see Installation section)
-2. **Build the Haskell binary** using `./build.sh`
-3. **Update your code** to use the Haskell interface
-4. **Test thoroughly** with your existing test cases
-5. **Monitor performance** to ensure improvements
-
-### Code Changes
-
-Replace Prolog imports:
-```python
-# Old (Prolog)
-from prolog.prolog_interface import plan_taiat_path
-
-# New (Haskell)
-from haskell.haskell_interface import plan_taiat_path
-```
-
-The API remains the same, so minimal code changes are required.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Run the test suite
-6. Submit a pull request
+1. Add new functions to `PathPlanner.hs`
+2. Add corresponding tests
+3. Update this README with new features
 
 ## License
 
-This implementation is part of the Taiat project and follows the same license terms. 
+MIT License - see LICENSE file for details. 

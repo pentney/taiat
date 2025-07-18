@@ -8,7 +8,7 @@ version = "0.0.2"
 authors = [
   { name="Bill Pentney", email="wpentney2@gmail.com" },
 ]
-description = "taiat is a tool for managing dependencies in AI agents with Prolog integration for path planning"
+description = "taiat is a tool for managing dependencies in AI agents with Haskell integration for path planning"
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
@@ -21,7 +21,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-prolog = []  # Prolog integration (requires gprolog system dependency)
+haskell = []  # Haskell integration (requires GHC and Cabal system dependencies)
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

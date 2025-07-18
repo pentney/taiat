@@ -1,7 +1,7 @@
 """
-Test script for the Global Optimized Prolog Path Planner.
+Test script for the Haskell Path Planner.
 
-This script demonstrates how to use the global optimized Prolog path planner to determine
+This script demonstrates how to use the Haskell path planner to determine
 execution paths for Taiat queries.
 """
 
@@ -13,24 +13,492 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from taiat.base import AgentGraphNodeSet, AgentGraphNode, AgentData
-from prolog.taiat_path_planner import (
-    TaiatPathPlanner,
-    plan_taiat_path,
-    plan_taiat_path_global,
-    get_global_planner,
-    clear_global_planner,
-)
+from haskell.path_planner_interface import plan_path, PathPlanner
 
 
-def create_example_node_set():
+def test_ml_workflow_model_selection():
     """
-    Create an example AgentGraphNodeSet for testing.
+    Test that the Haskell planner correctly selects only the random_forest model
+    when a generic 'model' input is required, and doesn't include logistic_regression.
 
-    This creates a simple data processing pipeline:
-    data_loader -> preprocessor -> analyzer -> visualizer
+    This test mimics the ml_workflow.py scenario where:
+    1. We have multiple model producers (logistic_regression, random_forest, etc.)
+    2. We request a specific model (random_forest) and a generic model_report
+    3. The predict_and_generate_report node requires a generic 'model' input
+    4. The planner should select only random_forest, not logistic_regression
     """
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
 
-    # Define the nodes
+    # Define dummy functions for the test nodes
+    def dummy_function(state):
+        return state
+
+    # Create the ML workflow graph structure (mimicking ml_agents.py)
+    load_dataset_node = AgentGraphNode(
+        name="load_dataset",
+        description="Load the dataset",
+        function=dummy_function,
+        inputs=[AgentData(name="dataset_name", parameters={}, description="", data=None)],
+        outputs=[AgentData(name="dataset", parameters={}, description="", data=None)],
+    )
+
+    logistic_regression_node = AgentGraphNode(
+        name="logistic_regression",
+        description="Train a logistic regression model",
+        function=dummy_function,
+        inputs=[AgentData(name="dataset", parameters={}, description="", data=None)],
+        outputs=[
+            AgentData(
+                name="model", 
+                parameters={"model_type": "logistic_regression"}, 
+                description="", 
+                data=None
+            ),
+            AgentData(name="model_params", parameters={}, description="", data=None),
+        ],
+    )
+
+    random_forest_node = AgentGraphNode(
+        name="random_forest",
+        description="Train a random forest model",
+        function=dummy_function,
+        inputs=[AgentData(name="dataset", parameters={}, description="", data=None)],
+        outputs=[
+            AgentData(
+                name="model", 
+                parameters={"model_type": "random_forest"}, 
+                description="", 
+                data=None
+            ),
+        ],
+    )
+
+    nearest_neighbors_node = AgentGraphNode(
+        name="nearest_neighbors",
+        description="Train a nearest neighbors model",
+        function=dummy_function,
+        inputs=[AgentData(name="dataset", parameters={}, description="", data=None)],
+        outputs=[
+            AgentData(
+                name="model", 
+                parameters={"model_type": "nearest_neighbors"}, 
+                description="", 
+                data=None
+            ),
+        ],
+    )
+
+    clustering_node = AgentGraphNode(
+        name="clustering",
+        description="Train a clustering model",
+        function=dummy_function,
+        inputs=[AgentData(name="dataset", parameters={}, description="", data=None)],
+        outputs=[
+            AgentData(
+                name="model", 
+                parameters={"model_type": "clustering"}, 
+                description="", 
+                data=None
+            ),
+        ],
+    )
+
+    predict_and_generate_report_node = AgentGraphNode(
+        name="predict_and_generate_report",
+        description="Make a prediction and generate a report",
+        function=dummy_function,
+        inputs=[AgentData(name="model", parameters={}, description="", data=None)],  # Generic model input
+        outputs=[
+            AgentData(name="model_preds", parameters={}, description="", data=None),
+            AgentData(name="model_report", parameters={}, description="", data=None),
+        ],
+    )
+
+    results_analysis_node = AgentGraphNode(
+        name="results_analysis",
+        description="Analyze the results",
+        function=dummy_function,
+        inputs=[
+            AgentData(name="dataset_name", parameters={}, description="", data=None),
+            AgentData(name="model_report", parameters={}, description="", data=None),
+        ],
+        outputs=[AgentData(name="summary", parameters={}, description="", data=None)],
+    )
+
+    # Create the node set (mimicking agent_roster)
+    node_set = AgentGraphNodeSet(
+        nodes=[
+            load_dataset_node,
+            logistic_regression_node,
+            random_forest_node,
+            nearest_neighbors_node,
+            clustering_node,
+            predict_and_generate_report_node,
+            results_analysis_node,
+        ]
+    )
+
+    # Define desired outputs (mimicking the ml_workflow.py scenario)
+    # We want a specific random_forest model and a generic model_report
+    desired_outputs = [
+        AgentData(
+            name="model", 
+            parameters={"model_type": "random_forest"}, 
+            description="", 
+            data=None
+        ),
+        AgentData(
+            name="model_report", 
+            parameters={},
+            description="", 
+            data=None
+        ),
+    ]
+
+    # Plan execution path using Haskell planner
+    # Include external inputs that are needed (dataset_name)
+    external_inputs = [
+        AgentData(name="dataset_name", parameters={}, description="", data=None)
+    ]
+    execution_path = plan_path(node_set, desired_outputs, external_inputs)
+
+    print(f"Haskell ML workflow model selection test execution path: {execution_path}")
+
+    # Verify the expected behavior:
+    # 1. Should include dataset_name_external (external input)
+    # 2. Should include load_dataset
+    # 3. Should include random_forest (the specific model requested)
+    # 4. Should include predict_and_generate_report (to generate model_report)
+    # 5. Should NOT include logistic_regression, nearest_neighbors, or clustering
+    # 6. Should NOT include results_analysis (not requested)
+
+    expected_nodes = {"dataset_name_external", "load_dataset", "random_forest", "predict_and_generate_report"}
+    unexpected_nodes = {"logistic_regression", "nearest_neighbors", "clustering", "results_analysis"}
+
+    if execution_path is None:
+        print("❌ Haskell ML workflow model selection test failed - no execution path found")
+        assert False, "Execution path should be found"
+
+    execution_path_set = set(execution_path)
+
+    # Check that all expected nodes are present
+    missing_nodes = expected_nodes - execution_path_set
+    if missing_nodes:
+        print(f"❌ Haskell ML workflow model selection test failed - missing nodes: {missing_nodes}")
+        assert False, f"Missing expected nodes: {missing_nodes}"
+
+    # Check that no unexpected nodes are present
+    extra_nodes = unexpected_nodes & execution_path_set
+    if extra_nodes:
+        print(f"❌ Haskell ML workflow model selection test failed - unexpected nodes included: {extra_nodes}")
+        assert False, f"Unexpected nodes included: {extra_nodes}"
+
+    print("✓ Haskell ML workflow model selection test passed")
+
+
+def test_parameter_constraint():
+    """Test that input parameter constraints are properly enforced in Haskell planner."""
+    print("Testing Haskell parameter constraint enforcement...")
+    
+    # Create a producer that outputs X with parameters {"A": "B", "C": "D"}
+    producer = AgentGraphNode(
+        name="producer",
+        description="Produces output X with specific parameters",
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "B", "C": "D"},
+                description="Output X with parameters A:B and C:D",
+                data=None,
+            )
+        ],
+    )
+    
+    # Create a consumer that requires input X with parameter {"A": "B"}
+    # This should match because the output has A:B
+    consumer_correct = AgentGraphNode(
+        name="consumer_correct",
+        description="Consumes input X with parameter A:B (should match)",
+        inputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "B"},
+                description="Input X requiring parameter A:B",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    # Create a consumer that requires input X with parameter {"A": "C"}
+    # This should NOT match because the output has A:B, not A:C
+    consumer_incorrect = AgentGraphNode(
+        name="consumer_incorrect",
+        description="Consumes input X with parameter A:C (should NOT match)",
+        inputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "C"},
+                description="Input X requiring parameter A:C",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    # Test case 1: Correct parameter constraint (should succeed)
+    print("\n--- Test Case 1: Correct Parameter Constraint ---")
+    node_set_1 = AgentGraphNodeSet(nodes=[producer, consumer_correct])
+    desired_outputs_1 = [
+        AgentData(
+            name="final_output",
+            parameters={},
+            description="Final output",
+            data=None,
+        )
+    ]
+
+    try:
+        planner = PathPlanner()
+        if not planner.available:
+            print("❌ Haskell planner not available")
+            return
+        
+        path_1 = planner.plan_path(node_set_1, desired_outputs_1)
+        print(f"Path result: {path_1}")
+        
+        if path_1 == ["producer", "consumer_correct"]:
+            print("✅ Correct parameter constraint test PASSED")
+        else:
+            print(f"❌ Correct parameter constraint test FAILED: {path_1}")
+            
+    except Exception as e:
+        print(f"❌ Error in correct parameter test: {e}")
+    
+    # Test case 2: Incorrect parameter constraint (should fail)
+    print("\n--- Test Case 2: Incorrect Parameter Constraint ---")
+    node_set_2 = AgentGraphNodeSet(nodes=[producer, consumer_incorrect])
+    desired_outputs_2 = [
+            AgentData(
+            name="final_output",
+            parameters={},
+            description="Final output",
+                data=None,
+            )
+    ]
+    
+    try:
+        path_2 = planner.plan_path(node_set_2, desired_outputs_2)
+        print(f"Path result: {path_2}")
+        
+        if path_2 == []:
+            print("✅ Incorrect parameter constraint test PASSED (correctly rejected)")
+        else:
+            print(f"❌ Incorrect parameter constraint test FAILED: {path_2}")
+            
+    except Exception as e:
+        print(f"❌ Error in incorrect parameter test: {e}")
+    
+    # Test case 3: Additional parameters in output (should succeed)
+    print("\n--- Test Case 3: Additional Parameters in Output ---")
+    # Create a consumer that requires input X with parameter {"A": "B"}
+    # The producer outputs {"A": "B", "C": "D"}, so this should match
+    consumer_additional = AgentGraphNode(
+        name="consumer_additional",
+        description="Consumes input X with parameter A:B (output has additional C:D)",
+        inputs=[
+            AgentData(
+                name="X",
+                parameters={"A": "B"},
+                description="Input X requiring parameter A:B",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="final_output",
+                parameters={},
+                description="Final output",
+                data=None,
+            )
+        ],
+    )
+
+    node_set_3 = AgentGraphNodeSet(nodes=[producer, consumer_additional])
+    desired_outputs_3 = [
+        AgentData(
+            name="final_output",
+            parameters={},
+            description="Final output",
+            data=None,
+        )
+    ]
+
+    try:
+        path_3 = planner.plan_path(node_set_3, desired_outputs_3)
+        print(f"Path result: {path_3}")
+        
+        if path_3 == ["producer", "consumer_additional"]:
+            print("✅ Additional parameters test PASSED")
+        else:
+            print(f"❌ Additional parameters test FAILED: {path_3}")
+            
+    except Exception as e:
+        print(f"❌ Error in additional parameters test: {e}")
+
+
+def test_minimal_path_planning():
+    """Test basic path planning without parameter constraints."""
+    print("Testing Haskell minimal path planning...")
+    
+    # Create a simple node with no parameter constraints
+    node = AgentGraphNode(
+        name="simple_node",
+        description="Simple node",
+        inputs=[],
+        outputs=[
+            AgentData(
+                name="output",
+                parameters={},  # No parameters
+                description="",
+                data=None,
+            )
+        ],
+    )
+    node_set = AgentGraphNodeSet(nodes=[node])
+    desired_outputs = [
+        AgentData(
+            name="output",
+            parameters={},  # No parameters
+            description="",
+            data=None,
+        )
+    ]
+
+    print(f"Node: {node.name}")
+    print(f"Node outputs: {node.outputs}")
+    print(f"Desired outputs: {desired_outputs}")
+    
+    try:
+        planner = PathPlanner()
+        if not planner.available:
+            print("❌ Haskell planner not available")
+            return
+        
+        print("✅ Haskell planner available")
+        
+        # Test the plan_path function
+        path = planner.plan_path(node_set, desired_outputs)
+        print(f"Haskell path result: {path}")
+        
+        # Test validation
+        validation_result = planner.validate_outputs(node_set, desired_outputs)
+        print(f"Haskell validation result: {validation_result}")
+        
+        # Test available outputs
+        available = planner.get_available_outputs(node_set)
+        print(f"Haskell available outputs: {available}")
+        
+        # Test circular dependencies
+        has_circular = planner.has_circular_dependencies(node_set)
+        print(f"Haskell has circular dependencies: {has_circular}")
+        
+        if path == ["simple_node"]:
+            print("✅ Haskell minimal path planning test PASSED")
+        else:
+            print(f"❌ Haskell minimal path planning test FAILED: {path}")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def test_agent_data_matching():
+    """Test agent data matching functionality."""
+    print("Testing Haskell agent data matching...")
+    
+    # Test basic agent_data_match functionality
+    data1 = AgentData(name="test", parameters={}, description="test", data=None)
+    data2 = AgentData(name="test", parameters={}, description="test", data=None)
+    
+    # Test through the planner's internal logic
+    node = AgentGraphNode(name="test_node", description="test", inputs=[], outputs=[data2])
+    node_set = AgentGraphNodeSet(nodes=[node])
+    desired = [data1]
+    
+    try:
+        planner = PathPlanner()
+        if not planner.available:
+            print("❌ Haskell planner not available")
+            return
+        
+        path = planner.plan_path(node_set, desired)
+        print(f"Basic matching path: {path}")
+        
+        if path == ["test_node"]:
+            print("✅ Basic agent data matching test PASSED")
+        else:
+            print(f"❌ Basic agent data matching test FAILED: {path}")
+        
+        # Test parameter subset matching
+        input_data = AgentData(name="model", parameters={"type": "logistic_regression"}, description="input", data=None)
+        output_data = AgentData(name="model", parameters={"type": "logistic_regression", "version": "v1"}, description="output", data=None)
+        
+        node2 = AgentGraphNode(name="model_node", description="test", inputs=[], outputs=[output_data])
+        node_set2 = AgentGraphNodeSet(nodes=[node2])
+        desired2 = [input_data]
+        
+        path2 = planner.plan_path(node_set2, desired2)
+        print(f"Parameter subset matching path: {path2}")
+        
+        if path2 == ["model_node"]:
+            print("✅ Parameter subset matching test PASSED")
+        else:
+            print(f"❌ Parameter subset matching test FAILED: {path2}")
+        
+        # Test parameter conflict rejection
+        input_data3 = AgentData(name="model", parameters={"type": "logistic_regression"}, description="input", data=None)
+        output_data3 = AgentData(name="model", parameters={"type": "neural_network", "version": "v1"}, description="output", data=None)
+        
+        node3 = AgentGraphNode(name="model_node3", description="test", inputs=[], outputs=[output_data3])
+        node_set3 = AgentGraphNodeSet(nodes=[node3])
+        desired3 = [input_data3]
+        
+        path3 = planner.plan_path(node_set3, desired3)
+        print(f"Parameter conflict path: {path3}")
+        
+        if path3 == []:  # Should fail due to parameter conflict
+            print("✅ Parameter conflict rejection test PASSED")
+        else:
+            print(f"❌ Parameter conflict rejection test FAILED: {path3}")
+        
+    except Exception as e:
+        print(f"❌ Error in agent data matching test: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def test_simple_pipeline():
+    """Test a simple linear pipeline."""
+    print("Testing simple pipeline...")
+    
+    # Create a simple data processing pipeline: data_loader -> preprocessor -> analyzer -> visualizer
     data_loader = AgentGraphNode(
         name="data_loader",
         description="Load data from source",
@@ -112,181 +580,7 @@ def create_example_node_set():
     node_set = AgentGraphNodeSet(
         nodes=[data_loader, preprocessor, analyzer, visualizer]
     )
-    return node_set
 
-
-def create_complex_example_node_set():
-    """
-    Create a more complex example with multiple paths and dependencies.
-    """
-
-    # Data loading nodes
-    csv_loader = AgentGraphNode(
-        name="csv_loader",
-        description="Load CSV data",
-        inputs=[],
-        outputs=[
-            AgentData(name="csv_data", parameters={}, description="CSV data", data=None)
-        ],
-    )
-
-    json_loader = AgentGraphNode(
-        name="json_loader",
-        description="Load JSON data",
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="json_data", parameters={}, description="JSON data", data=None
-            )
-        ],
-    )
-
-    # Data processing nodes
-    csv_processor = AgentGraphNode(
-        name="csv_processor",
-        description="Process CSV data",
-        inputs=[
-            AgentData(name="csv_data", parameters={}, description="CSV data", data=None)
-        ],
-        outputs=[
-            AgentData(
-                name="processed_csv",
-                parameters={},
-                description="Processed CSV data",
-                data=None,
-            )
-        ],
-    )
-
-    json_processor = AgentGraphNode(
-        name="json_processor",
-        description="Process JSON data",
-        inputs=[
-            AgentData(
-                name="json_data", parameters={}, description="JSON data", data=None
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="processed_json",
-                parameters={},
-                description="Processed JSON data",
-                data=None,
-            )
-        ],
-    )
-
-    # Data merging node
-    data_merger = AgentGraphNode(
-        name="data_merger",
-        description="Merge processed data",
-        inputs=[
-            AgentData(
-                name="processed_csv",
-                parameters={},
-                description="Processed CSV data",
-                data=None,
-            ),
-            AgentData(
-                name="processed_json",
-                parameters={},
-                description="Processed JSON data",
-                data=None,
-            ),
-        ],
-        outputs=[
-            AgentData(
-                name="merged_data", parameters={}, description="Merged data", data=None
-            )
-        ],
-    )
-
-    # Analysis nodes
-    statistical_analyzer = AgentGraphNode(
-        name="statistical_analyzer",
-        description="Perform statistical analysis",
-        inputs=[
-            AgentData(
-                name="merged_data", parameters={}, description="Merged data", data=None
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="statistical_results",
-                parameters={},
-                description="Statistical analysis results",
-                data=None,
-            )
-        ],
-    )
-
-    ml_analyzer = AgentGraphNode(
-        name="ml_analyzer",
-        description="Perform machine learning analysis",
-        inputs=[
-            AgentData(
-                name="merged_data", parameters={}, description="Merged data", data=None
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="ml_results",
-                parameters={},
-                description="ML analysis results",
-                data=None,
-            )
-        ],
-    )
-
-    # Report generator
-    report_generator = AgentGraphNode(
-        name="report_generator",
-        description="Generate comprehensive report",
-        inputs=[
-            AgentData(
-                name="statistical_results",
-                parameters={},
-                description="Statistical analysis results",
-                data=None,
-            ),
-            AgentData(
-                name="ml_results",
-                parameters={},
-                description="ML analysis results",
-                data=None,
-            ),
-        ],
-        outputs=[
-            AgentData(
-                name="final_report",
-                parameters={},
-                description="Final comprehensive report",
-                data=None,
-            )
-        ],
-    )
-
-    # Create the node set
-    node_set = AgentGraphNodeSet(
-        nodes=[
-            csv_loader,
-            json_loader,
-            csv_processor,
-            json_processor,
-            data_merger,
-            statistical_analyzer,
-            ml_analyzer,
-            report_generator,
-        ]
-    )
-    return node_set
-
-
-def test_simple_path():
-    """Test simple path planning."""
-    print("Testing simple path planning...")
-
-    node_set = create_example_node_set()
     desired_outputs = [
         AgentData(
             name="visualizations",
@@ -295,856 +589,44 @@ def test_simple_path():
             data=None,
         )
     ]
-
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    if execution_path:
-        print(f"✅ Simple path planning successful: {execution_path}")
-        expected_path = ["data_loader", "preprocessor", "analyzer", "visualizer"]
-        if execution_path == expected_path:
-            print("✅ Path matches expected order")
-        else:
-            print(f"⚠️  Path differs from expected: {expected_path}")
-    else:
-        print("❌ Simple path planning failed")
-
-
-def test_complex_path():
-    """Test complex path planning with multiple dependencies."""
-    print("\nTesting complex path planning...")
-
-    node_set = create_complex_example_node_set()
-    desired_outputs = [
-        AgentData(
-            name="final_report",
-            parameters={},
-            description="Final comprehensive report",
-            data=None,
-        )
-    ]
-
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    if execution_path:
-        print(f"✅ Complex path planning successful: {execution_path}")
-        # Check that dependencies are satisfied
-        print("✅ Path planning completed")
-    else:
-        print("❌ Complex path planning failed")
-
-
-def test_multiple_outputs():
-    """Test planning for multiple outputs."""
-    print("\nTesting multiple outputs planning...")
-
-    node_set = create_complex_example_node_set()
-    desired_outputs = [
-        AgentData(
-            name="statistical_results",
-            parameters={},
-            description="Statistical analysis results",
-            data=None,
-        ),
-        AgentData(
-            name="ml_results",
-            parameters={},
-            description="ML analysis results",
-            data=None,
-        ),
-    ]
-
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    if execution_path:
-        print(f"✅ Multiple outputs planning successful: {execution_path}")
-        print("✅ Path planning completed")
-    else:
-        print("❌ Multiple outputs planning failed")
-
-
-def test_invalid_output():
-    """Test planning with invalid output."""
-    print("\nTesting invalid output...")
-
-    node_set = create_example_node_set()
-    desired_outputs = [
-        AgentData(
-            name="nonexistent_output",
-            parameters={},
-            description="Output that doesn't exist",
-            data=None,
-        )
-    ]
-
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    if execution_path is None:
-        print("✅ Correctly handled invalid output")
-    else:
-        print("❌ Should have failed for invalid output")
-
-
-def test_convenience_functions():
-    """Test the convenience functions."""
-    print("\nTesting convenience functions...")
-
-    node_set = create_example_node_set()
-    desired_outputs = [
-        AgentData(
-            name="visualizations",
-            parameters={},
-            description="Generated visualizations",
-            data=None,
-        )
-    ]
-
-    # Test the global optimized function
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    if execution_path:
-        print("✅ Global optimized function works")
-    else:
-        print("❌ Global optimized function failed")
-
-
-def test_prolog_unit_tests():
-    """Run the Prolog unit tests directly."""
-    print("\nRunning Prolog unit tests...")
 
     try:
-        # Test the planner directly
-        planner = TaiatPathPlanner()
-        print("✅ Prolog planner initialization successful")
-
-        # Test with simple data
-        node_set = create_example_node_set()
-        desired_outputs = [
-            AgentData(
-                name="visualizations",
-                parameters={},
-                description="Generated visualizations",
-                data=None,
-            )
-        ]
+        planner = PathPlanner()
+        if not planner.available:
+            print("❌ Haskell planner not available")
+            return
 
         execution_path = planner.plan_path(node_set, desired_outputs)
+        print(f"Simple pipeline execution path: {execution_path}")
+
         if execution_path:
-            print("✅ Prolog planner path planning successful")
+            expected_path = ["data_loader", "preprocessor", "analyzer", "visualizer"]
+            if execution_path == expected_path:
+                print("✅ Simple pipeline test PASSED")
+    else:
+                print(f"⚠️  Path differs from expected: {expected_path}")
         else:
-            print("❌ Prolog planner path planning failed")
-
+            print("❌ Simple pipeline test FAILED")
+            
     except Exception as e:
-        print(f"❌ Prolog unit tests failed: {e}")
-
-
-def test_param_subset_match():
-    """Test parameter subset matching (should succeed)."""
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    node = AgentGraphNode(
-        name="model_node",
-        description="Provides a model",
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="model",
-                parameters={"type": "logistic_regression", "version": "v1"},
-                description="",
-                data=None,
-            )
-        ],
-    )
-    node_set = AgentGraphNodeSet(nodes=[node])
-    desired_outputs = [
-        AgentData(
-            name="model",
-            parameters={"type": "logistic_regression"},
-            description="",
-            data=None,
-        )
-    ]
-    path = plan_taiat_path_global(node_set, desired_outputs)
-    if path == ["model_node"]:
-        print("✅ test_param_subset_match passed")
-    else:
-        print(f"❌ test_param_subset_match failed: {path}")
-
-
-def test_param_conflict():
-    """Test parameter conflict (should fail)."""
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    node = AgentGraphNode(
-        name="model_node",
-        description="Provides a model",
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="model",
-                parameters={"type": "neural_network", "version": "v1"},
-                description="",
-                data=None,
-            )
-        ],
-    )
-    node_set = AgentGraphNodeSet(nodes=[node])
-    desired_outputs = [
-        AgentData(
-            name="model",
-            parameters={"type": "logistic_regression"},
-            description="",
-            data=None,
-        )
-    ]
-    path = plan_taiat_path_global(node_set, desired_outputs)
-    if not path:
-        print("✅ test_param_conflict passed")
-    else:
-        print(f"❌ test_param_conflict failed: {path}")
-
-
-def test_param_empty():
-    """Test empty input parameters (should succeed)."""
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    node = AgentGraphNode(
-        name="model_node",
-        description="Provides a model",
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="model",
-                parameters={"type": "neural_network"},
-                description="",
-                data=None,
-            )
-        ],
-    )
-    node_set = AgentGraphNodeSet(nodes=[node])
-    desired_outputs = [
-        AgentData(name="model", parameters={}, description="", data=None)
-    ]
-    path = plan_taiat_path_global(node_set, desired_outputs)
-    if path == ["model_node"]:
-        print("✅ test_param_empty passed")
-    else:
-        print(f"❌ test_param_empty failed: {path}")
-
-
-def test_name_mismatch():
-    """Test name mismatch (should fail)."""
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    node = AgentGraphNode(
-        name="model_node",
-        description="Provides a model",
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="modelB",
-                parameters={"type": "logistic_regression"},
-                description="",
-                data=None,
-            )
-        ],
-    )
-    node_set = AgentGraphNodeSet(nodes=[node])
-    desired_outputs = [
-        AgentData(
-            name="modelA",
-            parameters={"type": "logistic_regression"},
-            description="",
-            data=None,
-        )
-    ]
-    path = plan_taiat_path_global(node_set, desired_outputs)
-    if not path:
-        print("✅ test_name_mismatch passed")
-    else:
-        print(f"❌ test_name_mismatch failed: {path}")
-
-
-def test_parameter_constraints_for_intermediate_nodes():
-    """
-    Test that parameter constraints are respected for intermediate nodes.
-
-    This test verifies that when a node requires input X with parameters {"A":"B"},
-    the planner will not select a node that produces output X with parameters {"A":"C"}.
-    """
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    # Define dummy functions for the test nodes
-    def dummy_function(state):
-        return state
-
-    # Create test nodes
-    producer_wrong_params = AgentGraphNode(
-        name="producer_wrong_params",
-        description="Produces output X with wrong parameters",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="X",
-                parameters={"A": "C"},  # Wrong parameter value
-                description="Output X with wrong parameters",
-                data=None,
-            )
-        ],
-    )
-
-    producer_correct_params = AgentGraphNode(
-        name="producer_correct_params",
-        description="Produces output X with correct parameters",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="X",
-                parameters={"A": "B"},  # Correct parameter value
-                description="Output X with correct parameters",
-                data=None,
-            )
-        ],
-    )
-
-    consumer = AgentGraphNode(
-        name="consumer",
-        description="Consumes input X with specific parameters",
-        function=dummy_function,
-        inputs=[
-            AgentData(
-                name="X",
-                parameters={"A": "B"},  # Requires specific parameter value
-                description="Input X with specific parameters",
-                data=None,
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="final_output",
-                parameters={},
-                description="Final output",
-                data=None,
-            )
-        ],
-    )
-
-    # Create node set
-    node_set = AgentGraphNodeSet(
-        nodes=[producer_wrong_params, producer_correct_params, consumer]
-    )
-
-    # Define desired outputs
-    desired_outputs = [
-        AgentData(
-            name="final_output",
-            parameters={},
-            description="Final output",
-            data=None,
-        )
-    ]
-
-    # Plan execution path
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    # Debug output
-    print(f"Intermediate node execution path: {execution_path}")
-
-    # Verify the path includes the correct producer and excludes the wrong one
-    assert execution_path is not None, "Path planning should succeed"
-
-    # The path should include producer_correct_params but NOT producer_wrong_params
-    assert "producer_correct_params" in execution_path, (
-        "Path should include the correct producer"
-    )
-    assert "producer_wrong_params" not in execution_path, (
-        "Path should NOT include the wrong producer"
-    )
-    assert "consumer" in execution_path, "Path should include the consumer"
-
-    # Verify the execution order is correct
-    correct_producer_index = execution_path.index("producer_correct_params")
-    consumer_index = execution_path.index("consumer")
-    assert correct_producer_index < consumer_index, (
-        "Producer should come before consumer"
-    )
-
-    print("✓ Parameter constraints for intermediate nodes test passed")
-
-
-def test_parameter_constraints_with_multiple_options():
-    """
-    Test parameter constraints when multiple nodes can produce the same output type
-    but with different parameters.
-    """
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    # Define dummy functions for the test nodes
-    def dummy_function(state):
-        return state
-
-    # Create multiple producers with different parameter combinations
-    producer_1 = AgentGraphNode(
-        name="producer_1",
-        description="Produces output Y with parameters {type: 'A', version: '1'}",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="Y",
-                parameters={"type": "A", "version": "1"},
-                description="Output Y with type A, version 1",
-                data=None,
-            )
-        ],
-    )
-
-    producer_2 = AgentGraphNode(
-        name="producer_2",
-        description="Produces output Y with parameters {type: 'B', version: '1'}",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="Y",
-                parameters={"type": "B", "version": "1"},
-                description="Output Y with type B, version 1",
-                data=None,
-            )
-        ],
-    )
-
-    producer_3 = AgentGraphNode(
-        name="producer_3",
-        description="Produces output Y with parameters {type: 'A', version: '2'}",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="Y",
-                parameters={"type": "A", "version": "2"},
-                description="Output Y with type A, version 2",
-                data=None,
-            )
-        ],
-    )
-
-    # Consumer that requires specific parameters
-    consumer = AgentGraphNode(
-        name="consumer",
-        description="Consumes input Y with specific parameters",
-        function=dummy_function,
-        inputs=[
-            AgentData(
-                name="Y",
-                parameters={"type": "A", "version": "1"},  # Requires exact match
-                description="Input Y with specific parameters",
-                data=None,
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="final_output",
-                parameters={},
-                description="Final output",
-                data=None,
-            )
-        ],
-    )
-
-    # Create node set
-    node_set = AgentGraphNodeSet(nodes=[producer_1, producer_2, producer_3, consumer])
-
-    # Define desired outputs
-    desired_outputs = [
-        AgentData(
-            name="final_output",
-            parameters={},
-            description="Final output",
-            data=None,
-        )
-    ]
-
-    # Plan execution path
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    # Debug output
-    print(f"Multiple options execution path: {execution_path}")
-
-    # Verify the path includes only the correct producer
-    assert execution_path is not None, "Path planning should succeed"
-
-    # Should include producer_1 (exact match) but not the others
-    assert "producer_1" in execution_path, (
-        "Path should include producer_1 (exact match)"
-    )
-    assert "producer_2" not in execution_path, (
-        "Path should NOT include producer_2 (wrong type)"
-    )
-    assert "producer_3" not in execution_path, (
-        "Path should NOT include producer_3 (wrong version)"
-    )
-    assert "consumer" in execution_path, "Path should include the consumer"
-
-    # Verify execution order
-    producer_1_index = execution_path.index("producer_1")
-    consumer_index = execution_path.index("consumer")
-    assert producer_1_index < consumer_index, "Producer should come before consumer"
-
-    print("✓ Parameter constraints with multiple options test passed")
-
-
-def test_parameter_constraints_with_superset_matching():
-    """
-    Test that parameter constraints work correctly with superset matching.
-    A node that produces output with additional parameters should still match
-    if it includes all the required parameters.
-    """
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    # Define dummy functions for the test nodes
-    def dummy_function(state):
-        return state
-
-    # Producer with additional parameters (superset)
-    producer_superset = AgentGraphNode(
-        name="producer_superset",
-        description="Produces output Z with additional parameters",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="Z",
-                parameters={"type": "A", "version": "1", "extra": "value"},  # Superset
-                description="Output Z with additional parameters",
-                data=None,
-            )
-        ],
-    )
-
-    # Consumer that requires only a subset of parameters
-    consumer = AgentGraphNode(
-        name="consumer",
-        description="Consumes input Z with subset of parameters",
-        function=dummy_function,
-        inputs=[
-            AgentData(
-                name="Z",
-                parameters={
-                    "type": "A",
-                    "version": "1",
-                },  # Subset of producer's parameters
-                description="Input Z with subset of parameters",
-                data=None,
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="final_output",
-                parameters={},
-                description="Final output",
-                data=None,
-            )
-        ],
-    )
-
-    # Create node set
-    node_set = AgentGraphNodeSet(nodes=[producer_superset, consumer])
-
-    # Define desired outputs
-    desired_outputs = [
-        AgentData(
-            name="final_output",
-            parameters={},
-            description="Final output",
-            data=None,
-        )
-    ]
-
-    # Plan execution path
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    # Debug output
-    print(f"Superset matching execution path: {execution_path}")
-
-    # Verify the path includes the producer with superset parameters
-    assert execution_path is not None, "Path planning should succeed"
-    assert "producer_superset" in execution_path, (
-        "Path should include producer with superset parameters"
-    )
-    assert "consumer" in execution_path, "Path should include the consumer"
-
-    # Verify execution order
-    producer_index = execution_path.index("producer_superset")
-    consumer_index = execution_path.index("consumer")
-    assert producer_index < consumer_index, "Producer should come before consumer"
-
-    print("✓ Parameter constraints with superset matching test passed")
-
-
-def test_parameter_constraints_no_match():
-    """
-    Test that path planning fails when no node can produce the required parameters.
-    """
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    # Define dummy functions for the test nodes
-    def dummy_function(state):
-        return state
-
-    # Producer with completely different parameters
-    producer_wrong = AgentGraphNode(
-        name="producer_wrong",
-        description="Produces output W with wrong parameters",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="W",
-                parameters={"type": "X", "version": "1"},  # Completely different
-                description="Output W with wrong parameters",
-                data=None,
-            )
-        ],
-    )
-
-    # Consumer that requires specific parameters
-    consumer = AgentGraphNode(
-        name="consumer",
-        description="Consumes input W with specific parameters",
-        function=dummy_function,
-        inputs=[
-            AgentData(
-                name="W",
-                parameters={"type": "Y", "version": "2"},  # No match available
-                description="Input W with specific parameters",
-                data=None,
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="final_output",
-                parameters={},
-                description="Final output",
-                data=None,
-            )
-        ],
-    )
-
-    # Create node set
-    node_set = AgentGraphNodeSet(nodes=[producer_wrong, consumer])
-
-    # Define desired outputs
-    desired_outputs = [
-        AgentData(
-            name="final_output",
-            parameters={},
-            description="Final output",
-            data=None,
-        )
-    ]
-
-    # Plan execution path - should fail
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    # Debug output
-    print(f"No match execution path: {execution_path}")
-
-    # Verify that path planning fails when no suitable producer exists
-    assert execution_path is None, (
-        "Path planning should fail when no suitable producer exists"
-    )
-
-    print("✓ Parameter constraints no match test passed")
-
-
-def test_parameter_matching_debug():
-    """
-    Debug test to understand what's happening with parameter matching.
-    """
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import TaiatPathPlanner
-
-    # Define dummy functions for the test nodes
-    def dummy_function(state):
-        return state
-
-    # Create a simple test case
-    producer = AgentGraphNode(
-        name="producer",
-        description="Produces output X with parameters {A: 'C'}",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="X",
-                parameters={"A": "C"},
-                description="Output X with A=C",
-                data=None,
-            )
-        ],
-    )
-
-    consumer = AgentGraphNode(
-        name="consumer",
-        description="Consumes input X with parameters {A: 'B'}",
-        function=dummy_function,
-        inputs=[
-            AgentData(
-                name="X",
-                parameters={"A": "B"},
-                description="Input X with A=B",
-                data=None,
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="final_output",
-                parameters={},
-                description="Final output",
-                data=None,
-            )
-        ],
-    )
-
-    # Create node set
-    node_set = AgentGraphNodeSet(nodes=[producer, consumer])
-
-    # Print the Prolog representation
-    planner = TaiatPathPlanner()
-    node_set_str = planner._node_set_to_prolog(node_set)
-    print(f"Node set Prolog representation:")
-    print(node_set_str)
-
-    # Test the agent_data_to_prolog conversion
-    input_data = AgentData(name="X", parameters={"A": "B"}, description="", data=None)
-    output_data = AgentData(name="X", parameters={"A": "C"}, description="", data=None)
-
-    input_str = planner._agent_data_to_prolog(input_data)
-    output_str = planner._agent_data_to_prolog(output_data)
-
-    print(f"Input Prolog: {input_str}")
-    print(f"Output Prolog: {output_str}")
-
-    print("✓ Parameter matching debug test completed")
-
-
-def test_direct_parameter_matching():
-    """
-    Test parameter matching directly by creating a minimal Prolog query.
-    """
-    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
-    from prolog.taiat_path_planner import TaiatPathPlanner
-
-    # Define dummy functions for the test nodes
-    def dummy_function(state):
-        return state
-
-    # Create a simple test case with only one producer and one consumer
-    # The producer has wrong parameters, so the path should fail
-    producer_wrong = AgentGraphNode(
-        name="producer_wrong",
-        description="Produces output X with wrong parameters",
-        function=dummy_function,
-        inputs=[],
-        outputs=[
-            AgentData(
-                name="X",
-                parameters={"A": "C"},  # Wrong parameter value
-                description="Output X with wrong parameters",
-                data=None,
-            )
-        ],
-    )
-
-    consumer = AgentGraphNode(
-        name="consumer",
-        description="Consumes input X with specific parameters",
-        function=dummy_function,
-        inputs=[
-            AgentData(
-                name="X",
-                parameters={"A": "B"},  # Requires specific parameter value
-                description="Input X with specific parameters",
-                data=None,
-            )
-        ],
-        outputs=[
-            AgentData(
-                name="final_output",
-                parameters={},
-                description="Final output",
-                data=None,
-            )
-        ],
-    )
-
-    # Create node set with only the wrong producer
-    node_set = AgentGraphNodeSet(nodes=[producer_wrong, consumer])
-
-    # Define desired outputs
-    desired_outputs = [
-        AgentData(
-            name="final_output",
-            parameters={},
-            description="Final output",
-            data=None,
-        )
-    ]
-
-    # Plan execution path - should fail because no suitable producer exists
-    from prolog.taiat_path_planner import plan_taiat_path_global
-
-    execution_path = plan_taiat_path_global(node_set, desired_outputs)
-
-    print(f"Direct parameter matching test execution path: {execution_path}")
-
-    # This should fail because there's no producer with the correct parameters
-    if execution_path is None:
-        print(
-            "✓ Direct parameter matching test passed - correctly failed when no suitable producer exists"
-        )
-    else:
-        print(
-            f"❌ Direct parameter matching test failed - found path {execution_path} when it should have failed"
-        )
-        assert False, "Path planning should fail when no suitable producer exists"
+        print(f"❌ Error in simple pipeline test: {e}")
 
 
 def main():
-    """Run all tests."""
+    """Run all Haskell path planner tests."""
     print("=" * 60)
-    print("TAIAT PATH PLANNER TESTS")
+    print("TAIAT HASKELL PATH PLANNER TESTS")
     print("=" * 60)
 
-    test_simple_path()
-    test_complex_path()
-    test_multiple_outputs()
-    test_invalid_output()
-    test_convenience_functions()
-    test_prolog_unit_tests()
-    test_param_subset_match()
-    test_param_conflict()
-    test_param_empty()
-    test_name_mismatch()
-    test_parameter_constraints_for_intermediate_nodes()
-    test_parameter_constraints_with_multiple_options()
-    test_parameter_constraints_with_superset_matching()
-    test_parameter_constraints_no_match()
-    test_parameter_matching_debug()
-    test_direct_parameter_matching()
+    # Run Haskell-specific tests
+    test_ml_workflow_model_selection()
+    test_parameter_constraint()
+    test_minimal_path_planning()
+    test_agent_data_matching()
+    test_simple_pipeline()
 
     print("\n" + "=" * 60)
-    print("All tests completed!")
+    print("All Haskell path planner tests completed!")
     print("=" * 60)
 
 

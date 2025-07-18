@@ -18,7 +18,7 @@ import Data.Aeson (ToJSON, FromJSON, encode, decode)
 import qualified Data.ByteString.Lazy as BS
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
 
--- Data structures matching the Prolog implementation
+-- Data structures for the path planning implementation
 data AgentData = AgentData
     { agentDataName :: Text
     , agentDataParameters :: Map Text Text
@@ -100,7 +100,8 @@ findMostSpecificProducer :: [Node] -> AgentData -> [Node] -> [Node]
 findMostSpecificProducer _ _ [] = []
 findMostSpecificProducer _ _ [singleNode] = [singleNode]
 findMostSpecificProducer nodes desiredOutput candidates =
-    case findBestProducer candidates desiredOutput (-1) Nothing of
+    let validCandidates = filter (\p -> canNodeInputsBeSatisfied nodes p) candidates
+    in case findBestProducer validCandidates desiredOutput (-1) Nothing of
         Just bestProducer -> [bestProducer]
         Nothing -> []
   where
@@ -117,6 +118,35 @@ findMostSpecificProducer nodes desiredOutput candidates =
             (output:_) -> calculateSpecificityScore (agentDataParameters' desiredOutput) (agentDataParameters' output)
             [] -> -1
 
+-- Find the most specific producer with context from desired outputs
+findMostSpecificProducerWithContext :: [Node] -> AgentData -> [Node] -> [AgentData] -> [Node]
+findMostSpecificProducerWithContext _ _ [] _ = []
+findMostSpecificProducerWithContext _ _ [singleNode] _ = [singleNode]
+findMostSpecificProducerWithContext nodes desiredOutput candidates desiredOutputs =
+    let validCandidates = filter (\p -> canNodeInputsBeSatisfied nodes p) candidates
+    in case findBestProducerWithContext validCandidates desiredOutput desiredOutputs (-1) Nothing of
+        Just bestProducer -> [bestProducer]
+        Nothing -> []
+  where
+    findBestProducerWithContext [] _ _ _ bestProducer = bestProducer
+    findBestProducerWithContext (node:rest) desiredOutput desiredOutputs bestScore bestProducer =
+        let score = calculateScoreWithContext node desiredOutput desiredOutputs
+        in if score > bestScore
+           then findBestProducerWithContext rest desiredOutput desiredOutputs score (Just node)
+           else findBestProducerWithContext rest desiredOutput desiredOutputs bestScore bestProducer
+    
+    calculateScoreWithContext node desiredOutput desiredOutputs =
+        let matchingOutputs = filter (agentDataMatch desiredOutput) (nodeOutputs' node)
+        in case matchingOutputs of
+            (output:_) -> 
+                let baseScore = calculateSpecificityScore (agentDataParameters' desiredOutput) (agentDataParameters' output)
+                    -- Bonus score if this output matches a desired output
+                    bonusScore = if any (\desired -> agentDataMatch desired output) desiredOutputs
+                                then 1000  -- High bonus for exact matches
+                                else 0
+                in baseScore + bonusScore
+            [] -> -1
+
 -- Find all nodes that produce a specific output name (legacy - for backward compatibility)
 nodesProducingOutputName :: [Node] -> Text -> [Node]
 nodesProducingOutputName nodes outputName = filter producesOutputName nodes
@@ -124,20 +154,20 @@ nodesProducingOutputName nodes outputName = filter producesOutputName nodes
     producesOutputName node = any (\output -> agentDataName' output == outputName) (nodeOutputs' node)
 
 -- Get all dependencies for a node (nodes that produce its inputs with parameter matching)
-nodeDependencies :: [Node] -> Node -> [Node]
-nodeDependencies nodes node = concatMap findProducers (nodeInputs' node)
+nodeDependencies :: [Node] -> Node -> [AgentData] -> [Node]
+nodeDependencies nodes node desiredOutputs = concatMap findProducers (nodeInputs' node)
   where
     findProducers input =
         let producers = nodesProducingOutput nodes input
-        in case findMostSpecificProducer nodes input producers of
+        in case findMostSpecificProducerWithContext nodes input producers desiredOutputs of
             [producer] -> [producer]
             [] -> []
-            _ -> take 1 producers  -- Take first if multiple
+            _ -> []  -- Don't include any if multiple and none is most specific
 
 -- Check if a node is ready to execute (all dependencies satisfied)
-nodeReady :: [Node] -> Node -> [Node] -> Bool
-nodeReady nodes node executedNodes =
-    let dependencies = nodeDependencies nodes node
+nodeReady :: [Node] -> Node -> [Node] -> [AgentData] -> Bool
+nodeReady nodes node executedNodes desiredOutputs =
+    let dependencies = nodeDependencies nodes node desiredOutputs
     in all (`elem` executedNodes) dependencies
 
 -- Check if a node's inputs can be satisfied by any nodes in the graph
@@ -156,35 +186,36 @@ canNodeInputsBeSatisfied nodes node =
                any (\producer -> any (agentDataMatch input) (nodeOutputs' producer)) producers
 
 -- Recursively collect required nodes from a list of agent_data outputs
-requiredNodesFromOutputs :: [Node] -> [AgentData] -> [Node] -> Maybe [Node]
-requiredNodesFromOutputs _ [] acc = Just acc
-requiredNodesFromOutputs nodes (output:rest) acc =
+requiredNodesFromOutputs :: [Node] -> [AgentData] -> [AgentData] -> [Node] -> Maybe [Node]
+requiredNodesFromOutputs _ [] _ acc = Just acc
+requiredNodesFromOutputs nodes (output:rest) desiredOutputs acc =
     let producers = nodesProducingOutput nodes output
     in if null producers
        then Nothing  -- Return Nothing instead of error
-       else case find (\p -> canNodeInputsBeSatisfied nodes p) producers of
-            Just producer -> case requiredNodesFromNode nodes producer acc of
-                Just accWithNode -> requiredNodesFromOutputs nodes rest accWithNode
+       else case findMostSpecificProducerWithContext nodes output producers desiredOutputs of
+            [producer] -> case requiredNodesFromNode nodes producer desiredOutputs acc of
+                Just accWithNode -> requiredNodesFromOutputs nodes rest desiredOutputs accWithNode
                 Nothing -> Nothing
-            Nothing -> Nothing  -- Return Nothing instead of error
+            [] -> Nothing  -- No suitable producer found
+            _ -> Nothing  -- Multiple producers but none is most specific
 
 -- Recursively collect required nodes starting from a node
-requiredNodesFromNode :: [Node] -> Node -> [Node] -> Maybe [Node]
-requiredNodesFromNode nodes node acc
+requiredNodesFromNode :: [Node] -> Node -> [AgentData] -> [Node] -> Maybe [Node]
+requiredNodesFromNode nodes node desiredOutputs acc
     | node `elem` acc = Just acc
     | otherwise =
         let inputs = nodeInputs' node
             validInputs = filter (\input -> 
                 let producers = nodesProducingOutput nodes input
                 in not (null producers) && any (\p -> any (agentDataMatch input) (nodeOutputs' p)) producers) inputs
-        in case requiredNodesFromOutputs nodes validInputs acc of
+        in case requiredNodesFromOutputs nodes validInputs desiredOutputs acc of
             Just accWithDeps -> Just (accWithDeps ++ [node])
             Nothing -> Nothing
 
 -- Find all nodes needed to produce the desired outputs
 requiredNodes :: [Node] -> [AgentData] -> Maybe [Node]
 requiredNodes nodes desiredOutputs = 
-    case requiredNodesFromOutputs nodes desiredOutputs [] of
+    case requiredNodesFromOutputs nodes desiredOutputs desiredOutputs [] of
         Just nodes' -> Just $ removeDuplicates nodes'
         Nothing -> Nothing
 
@@ -194,18 +225,18 @@ removeDuplicates [] = []
 removeDuplicates (h:t) = h : removeDuplicates (filter (/= h) t)
 
 -- Topological sort to determine execution order
-topologicalSort :: [Node] -> [Node]
-topologicalSort nodes = topologicalSortRecursive nodes []
+topologicalSort :: [Node] -> [AgentData] -> [Node]
+topologicalSort nodes desiredOutputs = topologicalSortRecursive nodes [] desiredOutputs
 
-topologicalSortRecursive :: [Node] -> [Node] -> [Node]
-topologicalSortRecursive [] sortedNodes = sortedNodes
-topologicalSortRecursive nodes currentSorted =
-    let readyNodes = filter (\node -> nodeReady nodes node currentSorted) nodes
+topologicalSortRecursive :: [Node] -> [Node] -> [AgentData] -> [Node]
+topologicalSortRecursive [] sortedNodes _ = sortedNodes
+topologicalSortRecursive nodes currentSorted desiredOutputs =
+    let readyNodes = filter (\node -> nodeReady nodes node currentSorted desiredOutputs) nodes
     in if null readyNodes
        then currentSorted  -- No nodes ready - might indicate cycle or missing dependencies
        else let updatedSorted = currentSorted ++ readyNodes
                 remainingNodes = filter (`notElem` readyNodes) nodes
-            in topologicalSortRecursive remainingNodes updatedSorted
+            in topologicalSortRecursive remainingNodes updatedSorted desiredOutputs
 
 -- Helper predicate to extract node names from a list of nodes
 extractNodeNames :: [Node] -> [Text]
@@ -215,11 +246,40 @@ extractNodeNames = map nodeName'
 nodeIsNeeded :: [Node] -> Node -> [AgentData] -> [Node] -> Bool
 nodeIsNeeded nodes node desiredOutputs requiredNodes =
     let nodeOutputs = nodeOutputs' node
+        
+        -- Check if this node produces any of the desired outputs
         producesDesiredOutput = any (\desired -> any (agentDataMatch desired) nodeOutputs) desiredOutputs
-        consumers = filter (\consumer -> 
-            consumer /= node && 
-            any (\input -> any (agentDataMatch input) nodeOutputs) (nodeInputs' consumer)) requiredNodes
-    in producesDesiredOutput || not (null consumers)
+        
+        -- Check if this node's outputs are consumed by other required nodes
+        outputsConsumed = any (\output -> 
+            any (\consumer -> 
+                consumer /= node && 
+                any (\input -> agentDataMatch input output) (nodeInputs' consumer)) requiredNodes) nodeOutputs
+        
+        -- For nodes with parameterized outputs, check if they match specific desired outputs
+        -- or if they're needed by consumers that require specific parameters
+        parameterizedOutputsNeeded = any (\output -> 
+            let outputParams = agentDataParameters' output
+            in not (Map.null outputParams) && 
+               (any (\desired -> 
+                    agentDataName' desired == agentDataName' output && 
+                    agentDataParameters' desired == outputParams) desiredOutputs ||
+                any (\consumer -> 
+                    consumer /= node && 
+                    any (\input -> 
+                        agentDataName' input == agentDataName' output && 
+                        parametersSubset (agentDataParameters' input) outputParams) (nodeInputs' consumer)) requiredNodes)) nodeOutputs
+        
+        -- For nodes with non-parameterized outputs, they're needed if they produce desired outputs
+        -- or if they're consumed by other required nodes
+        nonParameterizedOutputsNeeded = any (\output -> 
+            Map.null (agentDataParameters' output) && 
+            (any (\desired -> agentDataMatch desired output) desiredOutputs ||
+             any (\consumer -> 
+                 consumer /= node && 
+                 any (\input -> agentDataMatch input output) (nodeInputs' consumer)) requiredNodes)) nodeOutputs
+        
+    in producesDesiredOutput || outputsConsumed || parameterizedOutputsNeeded || nonParameterizedOutputsNeeded
 
 -- Filter nodes to only include those that are actually needed
 filterRequiredNodes :: [Node] -> [AgentData] -> [Node] -> [Node]
@@ -234,7 +294,7 @@ planExecutionPath nodeSet desiredOutputs =
         Just requiredNodes' ->
             let uniqueRequiredNodes = removeDuplicates requiredNodes'
                 filteredNodes = filterRequiredNodes nodes desiredOutputs uniqueRequiredNodes
-                sortedNodes = topologicalSort filteredNodes
+                sortedNodes = topologicalSort filteredNodes desiredOutputs
             in extractNodeNames sortedNodes
         Nothing -> []  -- Return empty list instead of crashing
 
@@ -258,7 +318,7 @@ availableOutputs nodeSet =
 hasCircularDependencies :: AgentGraphNodeSet -> Bool
 hasCircularDependencies nodeSet =
     let nodes = agentGraphNodeSetNodes nodeSet
-        sortedNodes = topologicalSort nodes
+        sortedNodes = topologicalSort nodes []  -- Empty desired outputs for circular dependency check
     in length sortedNodes /= length nodes
 
 -- Performance measurement helper

@@ -37,9 +37,9 @@ from taiat.manager import TaiatManager, create_manager
 
 class TaiatBuilder:
     """
-    TaiatBuilder that uses global optimized Prolog path planning for better query execution.
+    TaiatBuilder that uses Haskell path planning for better query execution.
 
-    This builder extends the original TaiatBuilder with global optimized Prolog-based path planning
+    This builder extends the original TaiatBuilder with Haskell-based path planning
     capabilities while maintaining backward compatibility.
     """
 
@@ -48,7 +48,7 @@ class TaiatBuilder:
         llm: BaseChatModel,
         verbose: bool = False,
         add_metrics: bool = True,
-        use_prolog_planning: bool = True,
+        use_haskell_planning: bool = True,
         fallback_to_original: bool = True,
     ):
         self.llm = llm
@@ -57,7 +57,7 @@ class TaiatBuilder:
         self.data_dependence = defaultdict(dict)
         self.verbose = verbose
         self.add_metrics = add_metrics
-        self.use_prolog_planning = use_prolog_planning
+        self.use_haskell_planning = use_haskell_planning
         self.fallback_to_original = fallback_to_original
 
     def source_match(self, name, parameters):
@@ -162,13 +162,13 @@ class TaiatBuilder:
         self.graph = self.graph_builder.compile()
         return self.graph
 
-    def get_plan_with_prolog(
+    def get_plan_with_haskell(
         self, query: TaiatQuery, goal_outputs: list[AgentData]
     ) -> tuple[StateGraph | None, str, str]:
         """
-        Get execution plan using global optimized Prolog path planner.
+        Get execution plan using Haskell path planner.
 
-        This method uses the global optimized Prolog path planner to determine the optimal execution
+        This method uses the Haskell path planner to determine the optimal execution
         sequence, then builds the appropriate StateGraph for execution.
 
         Args:
@@ -178,44 +178,44 @@ class TaiatBuilder:
         Returns:
             Tuple of (StateGraph, status, error_message)
         """
-        if not self.use_prolog_planning:
+        if not self.use_haskell_planning:
             return self.get_plan_original(query, goal_outputs)
 
         try:
-            # Import global optimized Prolog planner
-            from prolog.taiat_path_planner import (
-                plan_taiat_path_global,
+            # Import Haskell path planner
+            from haskell.path_planner_interface import (
+                plan_path,
             )
 
-            # Plan execution path using global optimized Prolog
-            execution_path = plan_taiat_path_global(self.node_set, goal_outputs)
+            # Plan execution path using Haskell
+            execution_path = plan_path(self.node_set, goal_outputs)
             if execution_path is None:
                 if self.fallback_to_original:
                     if self.verbose:
                         print(
-                            "Global optimized Prolog planning failed, falling back to original method"
+                            "Haskell planning failed, falling back to original method"
                         )
                     return self.get_plan_original(query, goal_outputs)
                 else:
                     return (
                         None,
                         "error",
-                        "Global optimized Prolog planning failed and fallback is disabled",
+                        "Haskell planning failed and fallback is disabled",
                     )
 
             if self.verbose:
                 print(
-                    f"Global optimized Prolog planned execution path: {execution_path}"
+                    f"Haskell planned execution path: {execution_path}"
                 )
 
-            # Build a simplified StateGraph based on the Prolog execution path
-            # This creates a linear execution path as determined by Prolog
-            simplified_graph = StateGraph(State)
-            simplified_graph.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
-            simplified_graph.add_edge(TAIAT_TERMINAL_NODE, END)
+            # Build a StateGraph based on the Haskell execution path
+            # Create proper dependency edges instead of just linear edges
+            execution_graph = StateGraph(State)
+            execution_graph.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
+            execution_graph.add_edge(TAIAT_TERMINAL_NODE, END)
 
-            # Add nodes in the execution order
-            for i, node_name in enumerate(execution_path):
+            # Add all nodes from the execution path
+            for node_name in execution_path:
                 # Find the actual node
                 node = next(
                     (n for n in self.node_set.nodes if n.name == node_name), None
@@ -224,39 +224,99 @@ class TaiatBuilder:
                     return (
                         None,
                         "error",
-                        f"Node {node_name} from Prolog plan not found in node set",
+                        f"Node {node_name} from Haskell plan not found in node set",
                     )
 
-                simplified_graph.add_node(node_name, node.function)
+                execution_graph.add_node(node_name, node.function)
 
-                # Add edge from previous node or START
-                if i == 0:
-                    simplified_graph.add_edge(START, node_name)
-                else:
-                    simplified_graph.add_edge(execution_path[i - 1], node_name)
+            # Create edges based on actual dependencies
+            for node_name in execution_path:
+                node = next(
+                    (n for n in self.node_set.nodes if n.name == node_name), None
+                )
+                if node is None:
+                    continue
 
-                # Add edge to terminal if this is the last node
-                if i == len(execution_path) - 1:
-                    simplified_graph.add_edge(node_name, TAIAT_TERMINAL_NODE)
+                # Check if this node has dependencies
+                has_dependencies = False
+                for input_data in node.inputs:
+                    # Find which node produces this input
+                    for other_node_name in execution_path:
+                        if other_node_name == node_name:
+                            continue  # Skip self
+                        
+                        other_node = next(
+                            (n for n in self.node_set.nodes if n.name == other_node_name), None
+                        )
+                        if other_node is None:
+                            continue
+                        
+                        # Check if other_node produces the required input
+                        for output in other_node.outputs:
+                            if (output.name == input_data.name and 
+                                (not input_data.parameters or 
+                                 input_data.parameters.items() <= output.parameters.items())):
+                                # Add edge from dependency to this node
+                                execution_graph.add_edge(other_node_name, node_name)
+                                has_dependencies = True
+                                break
+                        if has_dependencies:
+                            break
+                    if has_dependencies:
+                        break
 
-            # Add metrics if enabled
+                # If no dependencies, connect to START
+                if not has_dependencies:
+                    execution_graph.add_edge(START, node_name)
+
+            # Connect nodes that produce goal outputs to terminal
+            for node_name in execution_path:
+                node = next(
+                    (n for n in self.node_set.nodes if n.name == node_name), None
+                )
+                if node is None:
+                    continue
+                
+                # Check if this node produces any goal outputs
+                for output in node.outputs:
+                    for goal_output in goal_outputs:
+                        if (output.name == goal_output.name and 
+                            (not goal_output.parameters or 
+                             goal_output.parameters.items() <= output.parameters.items())):
+                            execution_graph.add_edge(node_name, TAIAT_TERMINAL_NODE)
+                            break
+
+            # Add metrics if appropriate
             if self.add_metrics:
                 self.metrics = TaiatMetrics()
-                for node in simplified_graph.nodes:
-                    self.metrics.add_node_counter(node)
+                for node_name in execution_graph.nodes:
+                    self.metrics.add_node_counter(node_name)
 
-            compiled_graph = simplified_graph.compile()
-            return (compiled_graph, "success", "")
+            self.graph = execution_graph.compile()
+            return (self.graph, "success", "")
 
+        except ImportError as e:
+            if self.fallback_to_original:
+                if self.verbose:
+                    print(f"Haskell planner not available: {e}, falling back to original method")
+                return self.get_plan_original(query, goal_outputs)
+            else:
+                return (
+                    None,
+                    "error",
+                    f"Haskell planner not available: {e}",
+                )
         except Exception as e:
             if self.fallback_to_original:
                 if self.verbose:
-                    print(
-                        f"Error in global optimized Prolog planning: {e}, falling back to original method"
-                    )
+                    print(f"Haskell planning error: {e}, falling back to original method")
                 return self.get_plan_original(query, goal_outputs)
             else:
-                return (None, "error", f"Global optimized Prolog planning error: {e}")
+                return (
+                    None,
+                    "error",
+                    f"Haskell planning error: {e}",
+                )
 
     def get_plan_original(
         self, query: TaiatQuery, goal_outputs: list[AgentData]
@@ -366,8 +426,8 @@ class TaiatBuilder:
         Returns:
             Tuple of (StateGraph, status, error_message)
         """
-        if self.use_prolog_planning:
-            return self.get_plan_with_prolog(query, goal_outputs)
+        if self.use_haskell_planning:
+            return self.get_plan_with_haskell(query, goal_outputs)
         else:
             return self.get_plan_original(query, goal_outputs)
 
@@ -501,17 +561,17 @@ class TaiatBuilder:
 
 def create_builder(
     llm: BaseChatModel,
-    use_prolog_planning: bool = True,
+    use_haskell_planning: bool = True,
     fallback_to_original: bool = True,
     **kwargs,
 ) -> TaiatBuilder:
     """
-    Create a TaiatBuilder with global optimized Prolog path planning.
+    Create a TaiatBuilder with Haskell path planning.
 
     Args:
         llm: The language model to use
-        use_prolog_planning: Whether to use global optimized Prolog path planning
-        fallback_to_original: Whether to fall back to original planning if Prolog fails
+        use_haskell_planning: Whether to use Haskell path planning
+        fallback_to_original: Whether to fall back to original planning if Haskell fails
         **kwargs: Additional arguments to pass to TaiatBuilder
 
     Returns:
@@ -519,7 +579,7 @@ def create_builder(
     """
     return TaiatBuilder(
         llm=llm,
-        use_prolog_planning=use_prolog_planning,
+        use_haskell_planning=use_haskell_planning,
         fallback_to_original=fallback_to_original,
         **kwargs,
     )
