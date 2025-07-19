@@ -74,6 +74,8 @@ Taiat creates two different types of graphs:
 
 The primary difference between TAIAT and standard Langgraph is that TAIAT allows for the specification of constraints, such that each agent will be run when its dependencies have been satisfied - specifically, that inputs to the agent have been produced by agents that provide them as outputs. The selection of next task is handled by the TaiatManager, which looks for unfulfilled dependencies and selects the next agent to run to fulfill them.
 
+**Path Planning and Failure Recovery**: Taiat uses intelligent path planning to determine the optimal execution sequence for agent workflows. When an agent fails during execution, Taiat automatically seeks alternative paths to fulfill the query constraints, retrying failed agents up to a configurable limit before switching to alternative execution paths that avoid the failed nodes.
+
 ## Graph Visualization
 
 Taiat supports visualizing the dependency graph using Graphviz. To enable visualization:
