@@ -14,9 +14,7 @@ import Data.List (find, nub, sortBy)
 import Data.Maybe (fromMaybe, catMaybes)
 import Data.Ord (comparing)
 import GHC.Generics (Generic)
-import Data.Aeson (ToJSON, FromJSON, encode, decode)
-import qualified Data.ByteString.Lazy as BS
-import Data.Time.Clock (getCurrentTime, diffUTCTime)
+import Data.Aeson (ToJSON, FromJSON)
 
 -- Data structures for the path planning implementation
 data AgentData = AgentData
@@ -79,11 +77,6 @@ agentDataMatch :: AgentData -> AgentData -> Bool
 agentDataMatch (AgentData name1 params1 _ _) (AgentData name2 params2 _ _) =
     name1 == name2 && parametersSubset params1 params2
 
--- More flexible parameter matching that allows for subset matching in both directions
-agentDataMatchFlexible :: AgentData -> AgentData -> Bool
-agentDataMatchFlexible (AgentData name1 params1 _ _) (AgentData name2 params2 _ _) =
-    name1 == name2 && (parametersSubset params1 params2 || parametersSubset params2 params1 || params1 == params2)
-
 -- Find all nodes that produce a specific output (with parameter matching)
 nodesProducingOutput :: [Node] -> AgentData -> [Node]
 nodesProducingOutput nodes output = filter producesOutput nodes
@@ -94,29 +87,6 @@ nodesProducingOutput nodes output = filter producesOutput nodes
 calculateSpecificityScore :: Map Text Text -> Map Text Text -> Int
 calculateSpecificityScore desiredParams producedParams =
     length $ filter (\(k, v) -> Map.lookup k producedParams == Just v) (Map.toList desiredParams)
-
--- Find the most specific producer among multiple candidates
-findMostSpecificProducer :: [Node] -> AgentData -> [Node] -> [Node]
-findMostSpecificProducer _ _ [] = []
-findMostSpecificProducer _ _ [singleNode] = [singleNode]
-findMostSpecificProducer nodes desiredOutput candidates =
-    let validCandidates = filter (\p -> canNodeInputsBeSatisfied nodes p) candidates
-    in case findBestProducer validCandidates desiredOutput (-1) Nothing of
-        Just bestProducer -> [bestProducer]
-        Nothing -> []
-  where
-    findBestProducer [] _ _ bestProducer = bestProducer
-    findBestProducer (node:rest) desiredOutput bestScore bestProducer =
-        let score = calculateScore node desiredOutput
-        in if score > bestScore
-           then findBestProducer rest desiredOutput score (Just node)
-           else findBestProducer rest desiredOutput bestScore bestProducer
-    
-    calculateScore node desiredOutput =
-        let matchingOutputs = filter (agentDataMatch desiredOutput) (nodeOutputs' node)
-        in case matchingOutputs of
-            (output:_) -> calculateSpecificityScore (agentDataParameters' desiredOutput) (agentDataParameters' output)
-            [] -> -1
 
 -- Find the most specific producer with context from desired outputs
 findMostSpecificProducerWithContext :: [Node] -> AgentData -> [Node] -> [AgentData] -> [Node]
@@ -381,20 +351,4 @@ hasCircularDependencies :: AgentGraphNodeSet -> Bool
 hasCircularDependencies nodeSet =
     let nodes = agentGraphNodeSetNodes nodeSet
         sortedNodes = topologicalSort nodes []  -- Empty desired outputs for circular dependency check
-    in length sortedNodes /= length nodes
-
--- Performance measurement helper
-measurePerformance :: IO a -> IO (a, Double)
-measurePerformance action = do
-    start <- getCurrentTime
-    result <- action
-    end <- getCurrentTime
-    let duration = diffUTCTime end start
-    return (result, realToFrac duration)
-
--- JSON serialization helpers
-encodeToJSON :: ToJSON a => a -> BS.ByteString
-encodeToJSON = encode
-
-decodeFromJSON :: FromJSON a => BS.ByteString -> Maybe a
-decodeFromJSON = decode 
+    in length sortedNodes /= length nodes 
