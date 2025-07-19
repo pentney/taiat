@@ -54,33 +54,114 @@ TestNodeSet = AgentGraphNodeSet(
     nodes=[
         AgentGraphNode(
             name="one_analysis",
+            description="Perform one analysis",
             function=one_analysis,
-            inputs=[AgentData(name="dataset")],
-            outputs=[AgentData(name="one_data")],
+            inputs=[
+                AgentData(
+                    name="dataset",
+                    parameters={},
+                    description="Input dataset",
+                    data=None,
+                )
+            ],
+            outputs=[
+                AgentData(
+                    name="one_data",
+                    parameters={},
+                    description="One analysis result",
+                    data=None,
+                )
+            ],
         ),
         AgentGraphNode(
             name="two_analysis",
+            description="Perform two analysis",
             function=two_analysis,
-            inputs=[AgentData(name="one_data")],
-            outputs=[AgentData(name="two_data")],
+            inputs=[
+                AgentData(
+                    name="one_data",
+                    parameters={},
+                    description="One analysis result",
+                    data=None,
+                )
+            ],
+            outputs=[
+                AgentData(
+                    name="two_data",
+                    parameters={},
+                    description="Two analysis result",
+                    data=None,
+                )
+            ],
         ),
         AgentGraphNode(
             name="three_analysis",
+            description="Perform three analysis",
             function=three_analysis,
-            inputs=[AgentData(name="one_data")],
-            outputs=[AgentData(name="three_data")],
+            inputs=[
+                AgentData(
+                    name="one_data",
+                    parameters={},
+                    description="One analysis result",
+                    data=None,
+                )
+            ],
+            outputs=[
+                AgentData(
+                    name="three_data",
+                    parameters={},
+                    description="Three analysis result",
+                    data=None,
+                )
+            ],
         ),
         AgentGraphNode(
             name="four_analysis",
+            description="Perform four analysis",
             function=four_analysis,
-            inputs=[AgentData(name="three_data"), AgentData(name="two_data")],
-            outputs=[AgentData(name="four_data")],
+            inputs=[
+                AgentData(
+                    name="three_data",
+                    parameters={},
+                    description="Three analysis result",
+                    data=None,
+                ),
+                AgentData(
+                    name="two_data",
+                    parameters={},
+                    description="Two analysis result",
+                    data=None,
+                ),
+            ],
+            outputs=[
+                AgentData(
+                    name="four_data",
+                    parameters={},
+                    description="Four analysis result",
+                    data=None,
+                )
+            ],
         ),
         AgentGraphNode(
             name="four_summary",
+            description="Generate four summary",
             function=four_summary,
-            inputs=[AgentData(name="four_data")],
-            outputs=[AgentData(name="four_summary")],
+            inputs=[
+                AgentData(
+                    name="four_data",
+                    parameters={},
+                    description="Four analysis result",
+                    data=None,
+                )
+            ],
+            outputs=[
+                AgentData(
+                    name="four_summary",
+                    parameters={},
+                    description="Four summary",
+                    data=None,
+                )
+            ],
         ),
     ],
 )
@@ -91,8 +172,20 @@ TestNodeSetWithParams.nodes[1].inputs[0].parameters = {"param": "value"}
 TestNodeSetWithParams.nodes.append(
     AgentGraphNode(
         name="one_analysis_w_params",
+        description="Perform one analysis with parameters",
         function=one_analysis_w_params,
-        inputs=[AgentData(name="dataset")],
-        outputs=[AgentData(name="one_data", parameters={"param": "value"})],
+        inputs=[
+            AgentData(
+                name="dataset", parameters={}, description="Input dataset", data=None
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="one_data",
+                parameters={"param": "value"},
+                description="One analysis result with parameters",
+                data=None,
+            )
+        ],
     )
 )
