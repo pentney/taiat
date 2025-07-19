@@ -28,11 +28,12 @@ cd taiat
 pip install -r requirements.txt
 ```
 
-2. Build the Haskell path planner:
+2. **Build the Haskell path planner binary:**
 ```bash
 cd src/haskell
 cabal build
 ```
+This will compile the Haskell path planner required for optimal performance. (You only need to do this once, or after making changes to the Haskell code.)
 
 3. Set up your API key:
 ```bash
