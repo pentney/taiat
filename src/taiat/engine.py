@@ -3,7 +3,6 @@ from typing import Callable, Any, Optional, Tuple
 import functools
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langgraph.graph import StateGraph
 
 from taiat.base import (
     State,
@@ -16,6 +15,7 @@ from taiat.base import (
 )
 from taiat.builder import TaiatBuilder
 from taiat.generic_matcher import GenericMatcher
+from taiat.executor import TaiatExecutor
 
 
 class TaiatEngine:
@@ -41,13 +41,18 @@ class TaiatEngine:
 
     def get_plan(
         self, goal_outputs: list[AgentData], query: TaiatQuery, verbose: bool = False
-    ) -> tuple[StateGraph, str]:
-        graph, query.status, query.error = self.builder.get_plan(query, goal_outputs)
+    ) -> tuple[None, str]:
+        """
+        Get execution plan using the builder.
+
+        Note: This method now returns None for the graph parameter since we're not using langgraph,
+        but maintains the same interface for backward compatibility.
+        """
+        _, query.status, query.error = self.builder.get_plan(query, goal_outputs)
         if verbose:
             spacing = "\n   "
             print(f"Outputs: {spacing.join(query.all_outputs)}")
-            print(f"Workflow graph: {graph.edges.split(spacing)}")
-        return graph, query.status
+        return None, query.status
 
     def run(
         self,
@@ -65,34 +70,29 @@ class TaiatEngine:
                 self.goal_outputs[i] = FrozenAgentData(name=goal_output, parameters={})
         query.inferred_goal_output = self.goal_outputs
 
-        # Track execution path
-        execution_path = []
-
-        # Patch agent functions to track execution
-        if hasattr(self.builder, "node_set") and self.builder.node_set:
-            for node in self.builder.node_set.nodes:
-                if node.function:
-                    original_func = node.function
-
-                    @functools.wraps(original_func)
-                    def make_wrapper(func, node_obj):
-                        def wrapper(state):
-                            execution_path.append(node_obj)
-                            return func(state)
-
-                        return wrapper
-
-                    node.function = make_wrapper(original_func, node)
-
-        graph, status = self.get_plan(self.goal_outputs, query)
+        # Get plan and check for errors
+        _, status = self.get_plan(self.goal_outputs, query)
         if status == "error":
             return state
 
-        # Run the graph
-        state = graph.invoke(state)
-        query.status = "success"
-        # Set the execution path
-        query.path = execution_path
+        # Create executor and run the execution
+        if self.builder.node_set is None:
+            query.status = "error"
+            query.error = "No node set available"
+            return state
+
+        executor = TaiatExecutor(self.builder.node_set, verbose=query.visualize_graph)
+
+        try:
+            state = executor.execute(state, self.goal_outputs)
+            query.status = "success"
+            # Set the execution path
+            query.path = executor.get_execution_path()
+        except Exception as e:
+            query.status = "error"
+            query.error = str(e)
+            return state
+
         # Create visualization if requested (after path is set)
         visualization = None
         if query.visualize_graph:

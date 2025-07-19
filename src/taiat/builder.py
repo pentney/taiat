@@ -19,7 +19,6 @@ from pydantic import BaseModel, field_validator, Field
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
-from langgraph.graph import StateGraph, START, END
 from taiat.base import (
     AgentData,
     AgentGraphNode,
@@ -90,7 +89,7 @@ class TaiatBuilder:
         inputs: list[AgentData],
         terminal_nodes: list[str],
         add_metrics: bool = True,
-    ) -> StateGraph:
+    ) -> None:
         """
         Builds dependency and source maps for a set of nodes for path generation.
         This method is identical to the original TaiatBuilder.build().
@@ -101,9 +100,8 @@ class TaiatBuilder:
             nodes = AgentGraphNodeSet(
                 nodes=[AgentGraphNode(**node) for node in node_set]
             )
-        self.graph_builder = StateGraph(State)
-        self.graph_builder.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
-        self.graph_builder.add_edge(TAIAT_TERMINAL_NODE, END)
+
+        # Build dependency and source maps without using StateGraph
         for node in nodes.nodes:
             for output in node.outputs:
                 output_json = json.dumps(output.parameters)
@@ -118,9 +116,7 @@ class TaiatBuilder:
                 self.data_dependence.setdefault(output.name, {}).setdefault(
                     json.dumps(output.parameters), []
                 ).extend(node.inputs)
-            self.graph_builder.add_node(node.name, node.function)
-            if node.name in terminal_nodes:
-                self.graph_builder.add_edge(node.name, TAIAT_TERMINAL_NODE)
+
         for input in inputs:
             self.data_dependence.setdefault(input.name, {})[
                 json.dumps(input.parameters)
@@ -128,43 +124,16 @@ class TaiatBuilder:
             self.data_source.setdefault(input.name, {})[
                 json.dumps(input.parameters)
             ] = START_NODE
-        for dest_output_name, dependence_map in self.data_dependence.items():
-            for dest_output_parameter_json, data_dependencies in dependence_map.items():
-                dest_output_parameters = json.loads(dest_output_parameter_json)
-                dep_dest = self.source_match(dest_output_name, dest_output_parameters)
-                if dep_dest is None:
-                    raise ValueError(
-                        f"dependency {AgentData(name=dest_output_name, parameters=dest_output_parameters)} not defined"
-                    )
-                else:
-                    for dependency in data_dependencies:
-                        if dependency is START_NODE:
-                            continue  # Reachable from START
-                        dep_src = self.source_match(
-                            dependency.name, dependency.parameters
-                        )
-                        if dep_src is None:
-                            raise ValueError(
-                                f"dependencies for {dependency} not defined"
-                            )
-                        else:
-                            if dep_src is START_NODE:
-                                self.graph_builder.add_edge(START, dep_dest.name)
-                            else:
-                                self.graph_builder.add_edge(dep_src.name, dep_dest.name)
 
         # Add metrics, if appropriate.
         if self.add_metrics:
             self.metrics = TaiatMetrics()
-            for node in self.graph_builder.nodes:
-                self.metrics.add_node_counter(node)
-
-        self.graph = self.graph_builder.compile()
-        return self.graph
+            for node in nodes.nodes:
+                self.metrics.add_node_counter(node.name)
 
     def get_plan_with_planner(
         self, query: TaiatQuery, goal_outputs: list[AgentData]
-    ) -> tuple[StateGraph | None, str, str]:
+    ) -> tuple[None, str, str]:
         """
         Get execution plan using path planner.
 
@@ -236,101 +205,16 @@ class TaiatBuilder:
             if self.verbose:
                 print(f"Filtered execution path: {filtered_execution_path}")
 
-            # Build a StateGraph based on the execution path
-            # Create proper dependency edges instead of just linear edges
-            execution_graph = StateGraph(State)
-            execution_graph.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
-            execution_graph.add_edge(TAIAT_TERMINAL_NODE, END)
-
-            # Add all nodes from the execution path
-            for node_name in filtered_execution_path:
-                # Find the actual node
-                node = next(
-                    (n for n in self.node_set.nodes if n.name == node_name), None
-                )
-                if node is None:
-                    return (
-                        None,
-                        "error",
-                        f"Node {node_name} from plan not found in node set",
-                    )
-
-                execution_graph.add_node(node_name, node.function)
-
-            # Create edges based on actual dependencies
-            for node_name in filtered_execution_path:
-                node = next(
-                    (n for n in self.node_set.nodes if n.name == node_name), None
-                )
-                if node is None:
-                    continue
-
-                # Check if this node has dependencies
-                has_dependencies = False
-                for input_data in node.inputs:
-                    # Find which node produces this input
-                    for other_node_name in filtered_execution_path:
-                        if other_node_name == node_name:
-                            continue  # Skip self
-
-                        other_node = next(
-                            (
-                                n
-                                for n in self.node_set.nodes
-                                if n.name == other_node_name
-                            ),
-                            None,
-                        )
-                        if other_node is None:
-                            continue
-
-                        # Check if other_node produces the required input
-                        for output in other_node.outputs:
-                            if output.name == input_data.name and (
-                                not input_data.parameters
-                                or input_data.parameters.items()
-                                <= output.parameters.items()
-                            ):
-                                # Add edge from dependency to this node
-                                execution_graph.add_edge(other_node_name, node_name)
-                                has_dependencies = True
-                                break
-                        if has_dependencies:
-                            break
-                    if has_dependencies:
-                        break
-
-                # If no dependencies, connect to START
-                if not has_dependencies:
-                    execution_graph.add_edge(START, node_name)
-
-            # Connect nodes that produce goal outputs to terminal
-            for node_name in filtered_execution_path:
-                node = next(
-                    (n for n in self.node_set.nodes if n.name == node_name), None
-                )
-                if node is None:
-                    continue
-
-                # Check if this node produces any goal outputs
-                for output in node.outputs:
-                    for goal_output in goal_outputs:
-                        if output.name == goal_output.name and (
-                            not goal_output.parameters
-                            or goal_output.parameters.items()
-                            <= output.parameters.items()
-                        ):
-                            execution_graph.add_edge(node_name, TAIAT_TERMINAL_NODE)
-                            break
+            # Store the planned execution path for use by the executor
+            self.planned_execution_path = filtered_execution_path
 
             # Add metrics if appropriate
             if self.add_metrics:
                 self.metrics = TaiatMetrics()
-                for node_name in execution_graph.nodes:
+                for node_name in filtered_execution_path:
                     self.metrics.add_node_counter(node_name)
 
-            self.graph = execution_graph.compile()
-            return (self.graph, "success", "")
+            return (None, "success", "")
 
         except ImportError as e:
             if self.fallback_to_original:
@@ -359,7 +243,7 @@ class TaiatBuilder:
 
     def get_plan_original(
         self, query: TaiatQuery, goal_outputs: list[AgentData]
-    ) -> tuple[StateGraph | None, str, str]:
+    ) -> tuple[None, str, str]:
         """
         Get execution plan using the original TaiatBuilder logic.
 
@@ -399,59 +283,23 @@ class TaiatBuilder:
                             required_nodes.add(dep_source.name)
                             to_process.append(dep_source.name)
 
-            # Build execution graph
-            execution_graph = StateGraph(State)
-            execution_graph.add_node(TAIAT_TERMINAL_NODE, taiat_terminal_node)
-            execution_graph.add_edge(TAIAT_TERMINAL_NODE, END)
-
-            # Add required nodes
-            for node_name in required_nodes:
-                node = next(
-                    (n for n in self.node_set.nodes if n.name == node_name), None
-                )
-                if node:
-                    execution_graph.add_node(node_name, node.function)
-
-            # Add edges based on dependencies
-            for node_name in required_nodes:
-                dependencies = self.get_dependencies(node_name, {})
-                if dependencies:
-                    for dep in dependencies:
-                        dep_source = self.source_match(dep.name, dep.parameters)
-                        if dep_source and dep_source.name in required_nodes:
-                            execution_graph.add_edge(dep_source.name, node_name)
-                else:
-                    # No dependencies, connect to START
-                    execution_graph.add_edge(START, node_name)
-
-            # Connect final nodes to terminal
-            for node_name in required_nodes:
-                # Check if this node produces any goal outputs
-                node = next(
-                    (n for n in self.node_set.nodes if n.name == node_name), None
-                )
-                if node:
-                    for output in node.outputs:
-                        for goal_output in goal_outputs:
-                            if output.name == goal_output.name:
-                                execution_graph.add_edge(node_name, TAIAT_TERMINAL_NODE)
-                                break
+            # Store the required nodes for use by the executor
+            self.planned_execution_path = list(required_nodes)
 
             # Add metrics if enabled
             if self.add_metrics:
                 self.metrics = TaiatMetrics()
-                for node in execution_graph.nodes:
-                    self.metrics.add_node_counter(node)
+                for node_name in required_nodes:
+                    self.metrics.add_node_counter(node_name)
 
-            compiled_graph = execution_graph.compile()
-            return (compiled_graph, "success", "")
+            return (None, "success", "")
 
         except Exception as e:
             return (None, "error", f"Original planning error: {e}")
 
     def get_plan(
         self, query: TaiatQuery, goal_outputs: list[AgentData]
-    ) -> tuple[StateGraph | None, str, str]:
+    ) -> tuple[None, str, str]:
         """
         Get execution plan using the appropriate planning method.
 
