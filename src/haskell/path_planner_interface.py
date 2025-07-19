@@ -5,9 +5,12 @@ This module provides a Python interface to the Haskell path planning implementat
 using the daemon approach for better performance and resource efficiency.
 """
 
+import atexit
 import json
 import os
+import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -82,9 +85,42 @@ class PathPlanner:
         self.results: Dict[int, Any] = {}
         self.error: Optional[str] = None
         self.available = False
+        self._cleanup_registered = False
 
         if auto_start:
             self.start()
+
+    def _register_cleanup(self) -> None:
+        """Register cleanup handlers for process termination."""
+        if not self._cleanup_registered:
+            # Register atexit handler
+            atexit.register(self._cleanup_on_exit)
+            
+            # Register signal handlers for graceful shutdown
+            try:
+                signal.signal(signal.SIGINT, self._signal_handler)
+                signal.signal(signal.SIGTERM, self._signal_handler)
+            except (ValueError, OSError):
+                # Signal handlers may not be available in all environments
+                pass
+            
+            self._cleanup_registered = True
+
+    def _signal_handler(self, signum: int, frame) -> None:
+        """Handle termination signals."""
+        print(f"\nReceived signal {signum}, cleaning up daemon...")
+        self._cleanup_on_exit()
+        # Re-raise the signal to allow normal termination
+        sys.exit(0)
+
+    def _cleanup_on_exit(self) -> None:
+        """Cleanup function called on process exit."""
+        if self.process is not None:
+            try:
+                print("Stopping Haskell daemon...")
+                self.stop()
+            except Exception as e:
+                print(f"Warning: Error during daemon cleanup: {e}")
 
     def _find_haskell_binary(self) -> str:
         """Find the Haskell binary in the expected location."""
@@ -161,6 +197,9 @@ class PathPlanner:
                 bufsize=1,  # Line buffered
             )
 
+            # Register cleanup handlers
+            self._register_cleanup()
+
             # Start the response reader thread
             self.reader_thread = threading.Thread(
                 target=self._read_responses, daemon=True
@@ -187,13 +226,24 @@ class PathPlanner:
     def stop(self) -> None:
         """Stop the Haskell daemon process."""
         if self.process is not None:
-            self.process.terminate()
             try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-            self.process = None
-        self.available = False
+                # Try graceful termination first
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # Force kill if graceful termination fails
+                    self.process.kill()
+                    try:
+                        self.process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        # Process is stuck, log warning
+                        print("Warning: Haskell daemon process could not be terminated")
+            except Exception as e:
+                print(f"Warning: Error stopping daemon: {e}")
+            finally:
+                self.process = None
+                self.available = False
 
     def _read_responses(self) -> None:
         """Background thread to read responses from the Haskell process."""
@@ -202,7 +252,7 @@ class PathPlanner:
                 line = self.process.stdout.readline()
                 if not line:
                     break
-
+                
                 try:
                     response = json.loads(line.strip())
                     request_id = response.get("request_id")
@@ -426,6 +476,28 @@ class PathPlanner:
 # Global daemon instance for convenience functions
 _global_daemon: Optional[PathPlanner] = None
 _daemon_lock = threading.Lock()
+_cleanup_registered = False
+
+
+def _register_global_cleanup() -> None:
+    """Register cleanup for global daemon instance."""
+    global _cleanup_registered
+    if not _cleanup_registered:
+        atexit.register(_cleanup_global_daemon_on_exit)
+        _cleanup_registered = True
+
+
+def _cleanup_global_daemon_on_exit() -> None:
+    """Cleanup function for global daemon on process exit."""
+    global _global_daemon
+    if _global_daemon is not None:
+        try:
+            print("Stopping global Haskell daemon...")
+            _global_daemon.stop()
+        except Exception as e:
+            print(f"Warning: Error during global daemon cleanup: {e}")
+        finally:
+            _global_daemon = None
 
 
 def _get_global_daemon() -> PathPlanner:
@@ -436,6 +508,8 @@ def _get_global_daemon() -> PathPlanner:
             if _global_daemon:
                 _global_daemon.stop()
             _global_daemon = PathPlanner()
+            # Register cleanup for global daemon
+            _register_global_cleanup()
         return _global_daemon
 
 
@@ -491,5 +565,9 @@ def stop_global_daemon() -> None:
     global _global_daemon
     with _daemon_lock:
         if _global_daemon:
-            _global_daemon.stop()
-            _global_daemon = None
+            try:
+                _global_daemon.stop()
+            except Exception as e:
+                print(f"Warning: Error stopping global daemon: {e}")
+            finally:
+                _global_daemon = None
