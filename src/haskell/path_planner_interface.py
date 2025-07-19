@@ -95,7 +95,7 @@ class PathPlanner:
         if not self._cleanup_registered:
             # Register atexit handler
             atexit.register(self._cleanup_on_exit)
-            
+
             # Register signal handlers for graceful shutdown
             try:
                 signal.signal(signal.SIGINT, self._signal_handler)
@@ -103,7 +103,7 @@ class PathPlanner:
             except (ValueError, OSError):
                 # Signal handlers may not be available in all environments
                 pass
-            
+
             self._cleanup_registered = True
 
     def _signal_handler(self, signum: int, frame) -> None:
@@ -181,7 +181,7 @@ class PathPlanner:
     def start(self) -> None:
         """Start the Haskell daemon process."""
         if self.process is not None:
-            return  # Already running
+            return git  # Already running
 
         try:
             if self.haskell_binary_path is None:
@@ -252,7 +252,7 @@ class PathPlanner:
                 line = self.process.stdout.readline()
                 if not line:
                     break
-                
+
                 try:
                     response = json.loads(line.strip())
                     request_id = response.get("request_id")
@@ -388,6 +388,102 @@ class PathPlanner:
         # Return None for empty paths to maintain compatibility with existing tests
         return None if not path_result else path_result
 
+    def plan_alternative_path(
+        self,
+        node_set: AgentGraphNodeSet,
+        desired_outputs: List[AgentData],
+        failed_node_names: List[str],
+        external_inputs: Optional[List[AgentData]] = None,
+    ) -> Optional[List[str]]:
+        """
+        Plan alternative execution path excluding failed nodes.
+
+        Args:
+            node_set: The agent graph node set
+            desired_outputs: List of desired outputs to produce
+            failed_node_names: List of node names that have failed
+            external_inputs: Optional list of external inputs that are available
+
+        Returns:
+            List of node names in execution order, or None if no path found
+
+        Raises:
+            RuntimeError: If Haskell daemon is not available or execution fails
+        """
+        input_data = {
+            "nodeSet": self._convert_node_set_to_json(node_set),
+            "desiredOutputs": [
+                self._convert_agent_data_to_json(output) for output in desired_outputs
+            ],
+            "failedNodeNames": failed_node_names,
+        }
+
+        if external_inputs is not None:
+            input_data["externalInputs"] = [
+                self._convert_agent_data_to_json(input_data)
+                for input_data in external_inputs
+            ]
+
+        result = self._send_request("planAlternativeExecutionPath", input_data)
+        # Handle double-wrapped result from Haskell daemon
+        inner_result = result.get("result", {})
+        if isinstance(inner_result, dict):
+            path_result = inner_result.get("result", [])
+        else:
+            path_result = inner_result
+        # Return None for empty paths to maintain compatibility with existing tests
+        return None if not path_result else path_result
+
+    def plan_multiple_alternative_paths(
+        self,
+        node_set: AgentGraphNodeSet,
+        desired_outputs: List[AgentData],
+        failed_node_names: List[str],
+        external_inputs: Optional[List[AgentData]] = None,
+    ) -> List[List[str]]:
+        """
+        Plan multiple alternative execution paths excluding failed nodes.
+
+        Args:
+            node_set: The agent graph node set
+            desired_outputs: List of desired outputs to produce
+            failed_node_names: List of node names that have failed
+            external_inputs: Optional list of external inputs that are available
+
+        Returns:
+            List of alternative execution paths (each path is a list of node names)
+
+        Raises:
+            RuntimeError: If Haskell daemon is not available or execution fails
+        """
+        input_data = {
+            "nodeSet": self._convert_node_set_to_json(node_set),
+            "desiredOutputs": [
+                self._convert_agent_data_to_json(output) for output in desired_outputs
+            ],
+            "failedNodeNames": failed_node_names,
+        }
+
+        if external_inputs is not None:
+            input_data["externalInputs"] = [
+                self._convert_agent_data_to_json(input_data)
+                for input_data in external_inputs
+            ]
+
+        result = self._send_request("planMultipleAlternativePaths", input_data)
+        # Handle double-wrapped result from Haskell daemon
+        inner_result = result.get("result", {})
+        if isinstance(inner_result, dict):
+            paths_result = inner_result.get("result", [])
+        else:
+            paths_result = inner_result
+
+        # Ensure we return a list of lists
+        if isinstance(paths_result, list):
+            return paths_result
+        else:
+            return []
+
     def validate_outputs(
         self, node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
     ) -> bool:
@@ -414,6 +510,43 @@ class PathPlanner:
         if isinstance(inner_result, dict):
             return inner_result.get("result", False)
         return inner_result
+
+    def validate_outputs_with_failed_nodes(
+        self,
+        node_set: AgentGraphNodeSet,
+        desired_outputs: List[AgentData],
+        failed_node_names: List[str],
+    ) -> bool:
+        """
+        Validate that desired outputs can be produced excluding failed nodes.
+
+        Args:
+            node_set: The agent graph node set
+            desired_outputs: List of desired outputs to validate
+            failed_node_names: List of node names that have failed
+
+        Returns:
+            True if all outputs can be produced, False otherwise
+
+        Raises:
+            RuntimeError: If Haskell daemon is not available or execution fails
+        """
+        input_data = {
+            "nodeSet": self._convert_node_set_to_json(node_set),
+            "desiredOutputs": [
+                self._convert_agent_data_to_json(output) for output in desired_outputs
+            ],
+            "failedNodeNames": failed_node_names,
+        }
+
+        result = self._send_request("validateOutputsWithFailedNodes", input_data)
+        # Handle double-wrapped result from Haskell daemon
+        inner_result = result.get("result", {})
+        if isinstance(inner_result, dict):
+            validation_result = inner_result.get("result", False)
+        else:
+            validation_result = inner_result
+        return bool(validation_result)
 
     def get_available_outputs(self, node_set: AgentGraphNodeSet) -> List[AgentData]:
         """
@@ -444,6 +577,50 @@ class PathPlanner:
             )
             for output in outputs_json
         ]
+
+    def get_available_outputs_with_failed_nodes(
+        self,
+        node_set: AgentGraphNodeSet,
+        failed_node_names: List[str],
+    ) -> List[AgentData]:
+        """
+        Get all available outputs excluding failed nodes.
+
+        Args:
+            node_set: The agent graph node set
+            failed_node_names: List of node names that have failed
+
+        Returns:
+            List of available AgentData outputs
+
+        Raises:
+            RuntimeError: If Haskell daemon is not available or execution fails
+        """
+        input_data = {
+            "nodeSet": self._convert_node_set_to_json(node_set),
+            "failedNodeNames": failed_node_names,
+        }
+
+        result = self._send_request("availableOutputsWithFailedNodes", input_data)
+        # Handle double-wrapped result from Haskell daemon
+        inner_result = result.get("result", {})
+        if isinstance(inner_result, dict):
+            outputs_result = inner_result.get("result", [])
+        else:
+            outputs_result = inner_result
+
+        # Convert back to AgentData objects
+        if isinstance(outputs_result, list):
+            return [
+                AgentData(
+                    name=output.get("agentDataName", ""),
+                    parameters=output.get("agentDataParameters", {}),
+                    description=output.get("agentDataDescription", ""),
+                )
+                for output in outputs_result
+            ]
+        else:
+            return []
 
     def has_circular_dependencies(self, node_set: AgentGraphNodeSet) -> bool:
         """
@@ -528,6 +705,40 @@ def plan_path(
     return daemon.plan_path(node_set, desired_outputs, external_inputs)
 
 
+def plan_alternative_path(
+    node_set: AgentGraphNodeSet,
+    desired_outputs: List[AgentData],
+    failed_node_names: List[str],
+    external_inputs: Optional[List[AgentData]] = None,
+) -> Optional[List[str]]:
+    """
+    Plan alternative execution path excluding failed nodes.
+
+    This is a convenience function that uses the global daemon instance.
+    """
+    daemon = _get_global_daemon()
+    return daemon.plan_alternative_path(
+        node_set, desired_outputs, failed_node_names, external_inputs
+    )
+
+
+def plan_multiple_alternative_paths(
+    node_set: AgentGraphNodeSet,
+    desired_outputs: List[AgentData],
+    failed_node_names: List[str],
+    external_inputs: Optional[List[AgentData]] = None,
+) -> List[List[str]]:
+    """
+    Plan multiple alternative execution paths excluding failed nodes.
+
+    This is a convenience function that uses the global daemon instance.
+    """
+    daemon = _get_global_daemon()
+    return daemon.plan_multiple_alternative_paths(
+        node_set, desired_outputs, failed_node_names, external_inputs
+    )
+
+
 def validate_outputs(
     node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
 ) -> bool:
@@ -540,6 +751,22 @@ def validate_outputs(
     return daemon.validate_outputs(node_set, desired_outputs)
 
 
+def validate_outputs_with_failed_nodes(
+    node_set: AgentGraphNodeSet,
+    desired_outputs: List[AgentData],
+    failed_node_names: List[str],
+) -> bool:
+    """
+    Validate that desired outputs can be produced excluding failed nodes.
+
+    This is a convenience function that uses the global daemon instance.
+    """
+    daemon = _get_global_daemon()
+    return daemon.validate_outputs_with_failed_nodes(
+        node_set, desired_outputs, failed_node_names
+    )
+
+
 def get_available_outputs(node_set: AgentGraphNodeSet) -> List[AgentData]:
     """
     Get all outputs that can be produced by the node set.
@@ -548,6 +775,19 @@ def get_available_outputs(node_set: AgentGraphNodeSet) -> List[AgentData]:
     """
     daemon = _get_global_daemon()
     return daemon.get_available_outputs(node_set)
+
+
+def get_available_outputs_with_failed_nodes(
+    node_set: AgentGraphNodeSet,
+    failed_node_names: List[str],
+) -> List[AgentData]:
+    """
+    Get all available outputs excluding failed nodes.
+
+    This is a convenience function that uses the global daemon instance.
+    """
+    daemon = _get_global_daemon()
+    return daemon.get_available_outputs_with_failed_nodes(node_set, failed_node_names)
 
 
 def has_circular_dependencies(node_set: AgentGraphNodeSet) -> bool:

@@ -307,6 +307,41 @@ planExecutionPath nodeSet desiredOutputs =
             in extractNodeNames sortedNodes
         Nothing -> []  -- Return empty list instead of crashing
 
+-- Plan alternative execution path excluding failed nodes
+planAlternativeExecutionPath :: AgentGraphNodeSet -> [AgentData] -> [Text] -> [Text]
+planAlternativeExecutionPath nodeSet desiredOutputs failedNodeNames =
+    let nodes = agentGraphNodeSetNodes nodeSet
+        -- Filter out failed nodes
+        availableNodes = filter (\node -> not (nodeName' node `elem` failedNodeNames)) nodes
+        availableNodeSet = AgentGraphNodeSet availableNodes
+    in planExecutionPath availableNodeSet desiredOutputs
+
+-- Plan multiple alternative paths with different strategies
+planMultipleAlternativePaths :: AgentGraphNodeSet -> [AgentData] -> [Text] -> [[Text]]
+planMultipleAlternativePaths nodeSet desiredOutputs failedNodeNames =
+    let nodes = agentGraphNodeSetNodes nodeSet
+        -- Filter out failed nodes
+        availableNodes = filter (\node -> not (nodeName' node `elem` failedNodeNames)) nodes
+        availableNodeSet = AgentGraphNodeSet availableNodes
+        
+        -- Try different strategies for alternative paths
+        strategies = [
+            -- Strategy 1: Standard planning
+            \nodeSet' outputs -> planExecutionPath nodeSet' outputs,
+            -- Strategy 2: Planning with minimal dependencies (could be implemented)
+            \nodeSet' outputs -> planExecutionPath nodeSet' outputs,
+            -- Strategy 3: Planning with different node selection criteria (could be implemented)
+            \nodeSet' outputs -> planExecutionPath nodeSet' outputs
+        ]
+        
+        -- Apply each strategy
+        paths = map (\strategy -> strategy availableNodeSet desiredOutputs) strategies
+        
+        -- Filter out empty paths and duplicates
+        validPaths = filter (\path -> not (null path)) paths
+        uniquePaths = removeDuplicates validPaths
+    in take 3 uniquePaths  -- Return up to 3 alternative paths
+
 -- Predicate to validate that all desired outputs can be produced
 validateOutputs :: AgentGraphNodeSet -> [AgentData] -> Bool
 validateOutputs nodeSet desiredOutputs =
@@ -316,12 +351,30 @@ validateOutputs nodeSet desiredOutputs =
             producingNodes = nodesProducingOutputName nodes outputName
         in not (null producingNodes)) desiredOutputs
 
+-- Validate outputs with failed nodes excluded
+validateOutputsWithFailedNodes :: AgentGraphNodeSet -> [AgentData] -> [Text] -> Bool
+validateOutputsWithFailedNodes nodeSet desiredOutputs failedNodeNames =
+    let nodes = agentGraphNodeSetNodes nodeSet
+        -- Filter out failed nodes
+        availableNodes = filter (\node -> not (nodeName' node `elem` failedNodeNames)) nodes
+        availableNodeSet = AgentGraphNodeSet availableNodes
+    in validateOutputs availableNodeSet desiredOutputs
+
 -- Predicate to find all outputs that can be produced by the node set
 availableOutputs :: AgentGraphNodeSet -> [AgentData]
 availableOutputs nodeSet =
     let nodes = agentGraphNodeSetNodes nodeSet
         allOutputs = concatMap nodeOutputs' nodes
     in removeDuplicates allOutputs
+
+-- Get available outputs excluding failed nodes
+availableOutputsWithFailedNodes :: AgentGraphNodeSet -> [Text] -> [AgentData]
+availableOutputsWithFailedNodes nodeSet failedNodeNames =
+    let nodes = agentGraphNodeSetNodes nodeSet
+        -- Filter out failed nodes
+        availableNodes = filter (\node -> not (nodeName' node `elem` failedNodeNames)) nodes
+        availableNodeSet = AgentGraphNodeSet availableNodes
+    in availableOutputs availableNodeSet
 
 -- Check for circular dependencies
 hasCircularDependencies :: AgentGraphNodeSet -> Bool

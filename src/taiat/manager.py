@@ -6,7 +6,7 @@ path planner to determine optimal execution sequences for Taiat queries.
 """
 
 from functools import partial
-from typing import Callable, Optional, List, Dict, Any
+from typing import Callable, Optional, List, Dict, Any, Set
 from taiat.base import TAIAT_TERMINAL_NODE, AgentData, TaiatQuery, START_NODE
 from taiat.builder import AgentGraphNode, AgentGraphNodeSet, State
 from taiat.metrics import TaiatMetrics
@@ -35,6 +35,8 @@ class TaiatManager:
         metrics: Optional[TaiatMetrics] = None,
         use_haskell_planning: bool = True,
         fallback_to_original: bool = True,
+        max_retries: int = 3,
+        enable_alternative_paths: bool = True,
     ):
         """
         Initialize the TaiatManager.
@@ -47,12 +49,16 @@ class TaiatManager:
             metrics: Metrics collection object
             use_haskell_planning: Whether to use Haskell path planning
             fallback_to_original: Whether to fall back to original planning if Haskell fails
+            max_retries: Maximum number of retries for failed nodes
+            enable_alternative_paths: Whether to enable alternative path selection
         """
         self.interval = wait_interval
         self.node_set = node_set
         self.reverse_plan_edges = reverse_plan_edges
         self.use_haskell_planning = use_haskell_planning
         self.fallback_to_original = fallback_to_original
+        self.max_retries = max_retries
+        self.enable_alternative_paths = enable_alternative_paths
 
         # Initialize Haskell path planner if enabled
         if self.use_haskell_planning:
@@ -79,13 +85,163 @@ class TaiatManager:
         self.output_status[START] = "running"
         self.output_status[TAIAT_TERMINAL_NODE] = "pending"
 
+        # Failure tracking
+        self.failed_nodes: Set[str] = set()
+        self.node_retry_counts: Dict[str, int] = {}
+        self.failed_outputs: Set[str] = set()  # Track outputs that couldn't be produced
+
         # Execution path from Haskell planner
         self.planned_execution_path = []
         self.current_path_index = 0
+        self.alternative_paths: List[
+            List[str]
+        ] = []  # Store alternative execution paths
 
         self.status_lock = RLock()
         self.verbose = verbose
         self.metrics = metrics
+
+    def mark_node_failed(self, node_name: str, error_message: str = "") -> None:
+        """
+        Mark a node as failed and update failure tracking.
+
+        Args:
+            node_name: Name of the failed node
+            error_message: Optional error message describing the failure
+        """
+        with self.status_lock:
+            self.failed_nodes.add(node_name)
+            self.output_status[node_name] = "failed"
+
+            # Increment retry count
+            self.node_retry_counts[node_name] = (
+                self.node_retry_counts.get(node_name, 0) + 1
+            )
+
+            # Mark outputs as failed if this was the only producer
+            node = next((n for n in self.node_set.nodes if n.name == node_name), None)
+            if node:
+                for output in node.outputs:
+                    # Check if this is the only producer of this output
+                    other_producers = [
+                        n
+                        for n in self.node_set.nodes
+                        if n.name != node_name
+                        and any(o.name == output.name for o in n.outputs)
+                    ]
+                    if not other_producers:
+                        self.failed_outputs.add(output.name)
+
+            if self.verbose:
+                print(
+                    f"Node {node_name} marked as failed. Retry count: {self.node_retry_counts[node_name]}"
+                )
+                if error_message:
+                    print(f"Error: {error_message}")
+
+    def can_retry_node(self, node_name: str) -> bool:
+        """
+        Check if a node can be retried.
+
+        Args:
+            node_name: Name of the node to check
+
+        Returns:
+            True if the node can be retried, False otherwise
+        """
+        retry_count = self.node_retry_counts.get(node_name, 0)
+        return retry_count < self.max_retries
+
+    def reset_node_failure(self, node_name: str) -> None:
+        """
+        Reset failure status for a node (e.g., after successful retry).
+
+        Args:
+            node_name: Name of the node to reset
+        """
+        with self.status_lock:
+            if node_name in self.failed_nodes:
+                self.failed_nodes.remove(node_name)
+            self.output_status[node_name] = "pending"
+            if self.verbose:
+                print(f"Node {node_name} failure status reset")
+
+    def find_alternative_paths(
+        self, desired_outputs: List[AgentData]
+    ) -> List[List[str]]:
+        """
+        Find alternative execution paths that avoid failed nodes.
+
+        Args:
+            desired_outputs: List of desired outputs to produce
+
+        Returns:
+            List of alternative execution paths
+        """
+        if not self.enable_alternative_paths or not self.haskell_available:
+            return []
+
+        try:
+            # Use the new Haskell function for multiple alternative paths
+            from haskell.path_planner_interface import plan_multiple_alternative_paths
+
+            failed_node_names = list(self.failed_nodes)
+            alternative_paths = plan_multiple_alternative_paths(
+                self.node_set, desired_outputs, failed_node_names
+            )
+
+            if alternative_paths:
+                if self.verbose:
+                    print(f"Found {len(alternative_paths)} alternative paths")
+                    for i, path in enumerate(alternative_paths):
+                        print(f"  Alternative path {i + 1}: {path}")
+                return alternative_paths
+            else:
+                if self.verbose:
+                    print("No alternative paths found")
+                return []
+
+        except Exception as e:
+            if self.verbose:
+                print(f"Error finding alternative paths: {e}")
+            return []
+
+    def get_next_alternative_path(self) -> Optional[List[str]]:
+        """
+        Get the next alternative path to try.
+
+        Returns:
+            Next alternative path, or None if no more alternatives
+        """
+        if self.alternative_paths:
+            return self.alternative_paths.pop(0)
+        return None
+
+    def switch_to_alternative_path(self, alternative_path: List[str]) -> bool:
+        """
+        Switch to an alternative execution path.
+
+        Args:
+            alternative_path: The alternative path to switch to
+
+        Returns:
+            True if successfully switched, False otherwise
+        """
+        if not alternative_path:
+            return False
+
+        with self.status_lock:
+            self.planned_execution_path = alternative_path
+            self.current_path_index = 0
+
+            # Reset status for nodes in the new path that aren't failed
+            for node_name in alternative_path:
+                if node_name not in self.failed_nodes:
+                    self.output_status[node_name] = "pending"
+
+            if self.verbose:
+                print(f"Switched to alternative path: {alternative_path}")
+            return True
 
     def plan_execution_with_haskell(self, desired_outputs: List[AgentData]) -> bool:
         """
@@ -101,7 +257,7 @@ class TaiatManager:
             return False
 
         try:
-            execution_path = plan_taiat_path(self.node_set, desired_outputs)
+            execution_path = plan_path(self.node_set, desired_outputs)
             if execution_path is not None:
                 self.planned_execution_path = execution_path
                 self.current_path_index = 0
@@ -179,10 +335,44 @@ class TaiatManager:
         Enhanced router function that uses Haskell planning when available.
 
         This function combines Haskell path planning with the original dependency-based
-        routing logic for optimal agent selection.
+        routing logic for optimal agent selection, and includes failure handling.
         """
         with self.status_lock:
-            self.output_status[node] = "done"
+            # Check if the node failed
+            if node in self.failed_nodes:
+                if self.can_retry_node(node):
+                    # Reset failure status for retry
+                    self.reset_node_failure(node)
+                    if self.verbose:
+                        print(f"Retrying failed node: {node}")
+                else:
+                    if self.verbose:
+                        print(f"Node {node} has exceeded maximum retries")
+                    # Try to find alternative paths if we haven't already
+                    if not self.alternative_paths and self.enable_alternative_paths:
+                        # Get desired outputs from state if available
+                        desired_outputs = []
+                        if "query" in state and hasattr(
+                            state["query"], "inferred_goal_output"
+                        ):
+                            desired_outputs = state["query"].inferred_goal_output
+
+                        if desired_outputs:
+                            self.alternative_paths = self.find_alternative_paths(
+                                desired_outputs
+                            )
+                            if self.alternative_paths:
+                                alternative_path = self.get_next_alternative_path()
+                                if alternative_path:
+                                    self.switch_to_alternative_path(alternative_path)
+                                    if self.verbose:
+                                        print(
+                                            f"Switched to alternative path after node {node} failure"
+                                        )
+
+            # Mark node as done if it's not failed
+            if node not in self.failed_nodes:
+                self.output_status[node] = "done"
 
         if self.verbose:
             print(f"Node {node} complete, looking for next node")
@@ -193,8 +383,11 @@ class TaiatManager:
         ):
             next_planned_node = self.planned_execution_path[self.current_path_index]
 
-            # Check if the planned node is ready to run
-            if self._is_node_ready_to_run(next_planned_node):
+            # Check if the planned node is ready to run and not failed
+            if (
+                self._is_node_ready_to_run(next_planned_node)
+                and next_planned_node not in self.failed_nodes
+            ):
                 self.current_path_index += 1
                 with self.status_lock:
                     if self.verbose:
@@ -203,6 +396,13 @@ class TaiatManager:
                 if self.metrics is not None:
                     self.metrics[next_planned_node]["calls"] += 1
                 return next_planned_node
+            elif next_planned_node in self.failed_nodes:
+                # Skip failed nodes in the planned path
+                self.current_path_index += 1
+                if self.verbose:
+                    print(f"Skipping failed node in planned path: {next_planned_node}")
+                # Recursively call to get the next node
+                return self.enhanced_router_function(state, node)
 
         # Fall back to original routing logic
         if self.fallback_to_original:
@@ -266,7 +466,10 @@ class TaiatManager:
         # Find nodes that are ready to run
         ready_nodes = []
         for node_name in self.plan_edges[node]:
-            if self.output_status[node_name] == "pending":
+            if (
+                self.output_status[node_name] == "pending"
+                and node_name not in self.failed_nodes
+            ):
                 # Check if all dependencies are satisfied
                 if self._is_node_ready_to_run(node_name):
                     ready_nodes.append(node_name)
@@ -285,7 +488,10 @@ class TaiatManager:
         # Check if we're done (all nodes that depend on the current node are done)
         all_done = True
         for node_name in self.plan_edges[node]:
-            if self.output_status[node_name] != "done":
+            if (
+                self.output_status[node_name] != "done"
+                and node_name not in self.failed_nodes
+            ):
                 all_done = False
                 break
 
@@ -312,9 +518,12 @@ class TaiatManager:
             "running_nodes": sum(
                 1 for status in self.output_status.values() if status == "running"
             ),
+            "failed_nodes": len(self.failed_nodes),
             "haskell_available": self.haskell_available,
             "planned_execution_path": self.planned_execution_path,
             "current_path_index": self.current_path_index,
+            "alternative_paths_count": len(self.alternative_paths),
+            "failed_outputs": list(self.failed_outputs),
         }
 
         if self.metrics is not None:

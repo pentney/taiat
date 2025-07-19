@@ -114,8 +114,12 @@ processDaemonRequest (Object obj) =
         (Just requestId, Just (String funcName), Just input) -> do
             result <- case funcName of
                 "planExecutionPath" -> handlePlanExecutionPath input
+                "planAlternativeExecutionPath" -> handlePlanAlternativeExecutionPath input
+                "planMultipleAlternativePaths" -> handlePlanMultipleAlternativePaths input
                 "validateOutputs" -> handleValidateOutputs input
+                "validateOutputsWithFailedNodes" -> handleValidateOutputsWithFailedNodes input
                 "availableOutputs" -> handleAvailableOutputs input
+                "availableOutputsWithFailedNodes" -> handleAvailableOutputsWithFailedNodes input
                 "hasCircularDependencies" -> handleHasCircularDependencies input
                 _ -> return $ object ["error" .= ("Unknown function: " ++ T.unpack funcName)]
             return $ object ["request_id" .= requestId, "result" .= result]
@@ -177,12 +181,90 @@ handleValidateOutputs (Object inputObj) =
     case (HM.lookup "nodeSet" inputObj, HM.lookup "desiredOutputs" inputObj) of
         (Just nodeSetJson, Just desiredOutputsJson) ->
             case (decode $ encode nodeSetJson, decode $ encode desiredOutputsJson) of
-                (Just nodeSet, Just desiredOutputs) ->
+                (Just nodeSet, Just desiredOutputs) -> do
                     let result = validateOutputs nodeSet desiredOutputs
-                    in return $ object ["result" .= result]
+                    return $ object ["result" .= result]
                 _ -> return $ object ["error" .= ("Invalid data format" :: String)]
         _ -> return $ object ["error" .= ("Missing required fields" :: String)]
 handleValidateOutputs _ = return $ object ["error" .= ("Invalid input format" :: String)]
+
+-- Handle planAlternativeExecutionPath function
+handlePlanAlternativeExecutionPath :: Value -> IO Value
+handlePlanAlternativeExecutionPath (Object inputObj) =
+    case (HM.lookup "nodeSet" inputObj, HM.lookup "desiredOutputs" inputObj, HM.lookup "failedNodeNames" inputObj) of
+        (Just nodeSetJson, Just desiredOutputsJson, Just failedNodeNamesJson) ->
+            case (decode $ encode nodeSetJson, decode $ encode desiredOutputsJson, decode $ encode failedNodeNamesJson) of
+                (Just nodeSet, Just desiredOutputs, Just failedNodeNames) ->
+                    let externalInputs = case HM.lookup "externalInputs" inputObj of
+                            Just externalInputsJson -> 
+                                case decode $ encode externalInputsJson of
+                                    Just inputs -> inputs
+                                    Nothing -> []
+                            Nothing -> []
+                        -- Add external inputs as virtual nodes that produce them
+                        externalNodes = map (\input -> Node (agentDataName' input <> "_external") 
+                                                           ("External input: " <> agentDataName' input) 
+                                                           [] 
+                                                           [input]) externalInputs
+                        extendedNodeSet = AgentGraphNodeSet (externalNodes ++ agentGraphNodeSetNodes nodeSet)
+                    in do
+                        let result = planAlternativeExecutionPath extendedNodeSet desiredOutputs failedNodeNames
+                        return $ object ["result" .= result]
+                _ -> return $ object ["error" .= ("Invalid data format" :: String)]
+        _ -> return $ object ["error" .= ("Missing required fields" :: String)]
+handlePlanAlternativeExecutionPath _ = return $ object ["error" .= ("Invalid input format" :: String)]
+
+-- Handle planMultipleAlternativePaths function
+handlePlanMultipleAlternativePaths :: Value -> IO Value
+handlePlanMultipleAlternativePaths (Object inputObj) =
+    case (HM.lookup "nodeSet" inputObj, HM.lookup "desiredOutputs" inputObj, HM.lookup "failedNodeNames" inputObj) of
+        (Just nodeSetJson, Just desiredOutputsJson, Just failedNodeNamesJson) ->
+            case (decode $ encode nodeSetJson, decode $ encode desiredOutputsJson, decode $ encode failedNodeNamesJson) of
+                (Just nodeSet, Just desiredOutputs, Just failedNodeNames) ->
+                    let externalInputs = case HM.lookup "externalInputs" inputObj of
+                            Just externalInputsJson -> 
+                                case decode $ encode externalInputsJson of
+                                    Just inputs -> inputs
+                                    Nothing -> []
+                            Nothing -> []
+                        -- Add external inputs as virtual nodes that produce them
+                        externalNodes = map (\input -> Node (agentDataName' input <> "_external") 
+                                                           ("External input: " <> agentDataName' input) 
+                                                           [] 
+                                                           [input]) externalInputs
+                        extendedNodeSet = AgentGraphNodeSet (externalNodes ++ agentGraphNodeSetNodes nodeSet)
+                    in do
+                        let result = planMultipleAlternativePaths extendedNodeSet desiredOutputs failedNodeNames
+                        return $ object ["result" .= result]
+                _ -> return $ object ["error" .= ("Invalid data format" :: String)]
+        _ -> return $ object ["error" .= ("Missing required fields" :: String)]
+handlePlanMultipleAlternativePaths _ = return $ object ["error" .= ("Invalid input format" :: String)]
+
+-- Handle validateOutputsWithFailedNodes function
+handleValidateOutputsWithFailedNodes :: Value -> IO Value
+handleValidateOutputsWithFailedNodes (Object inputObj) =
+    case (HM.lookup "nodeSet" inputObj, HM.lookup "desiredOutputs" inputObj, HM.lookup "failedNodeNames" inputObj) of
+        (Just nodeSetJson, Just desiredOutputsJson, Just failedNodeNamesJson) ->
+            case (decode $ encode nodeSetJson, decode $ encode desiredOutputsJson, decode $ encode failedNodeNamesJson) of
+                (Just nodeSet, Just desiredOutputs, Just failedNodeNames) -> do
+                    let result = validateOutputsWithFailedNodes nodeSet desiredOutputs failedNodeNames
+                    return $ object ["result" .= result]
+                _ -> return $ object ["error" .= ("Invalid data format" :: String)]
+        _ -> return $ object ["error" .= ("Missing required fields" :: String)]
+handleValidateOutputsWithFailedNodes _ = return $ object ["error" .= ("Invalid input format" :: String)]
+
+-- Handle availableOutputsWithFailedNodes function
+handleAvailableOutputsWithFailedNodes :: Value -> IO Value
+handleAvailableOutputsWithFailedNodes (Object inputObj) =
+    case (HM.lookup "nodeSet" inputObj, HM.lookup "failedNodeNames" inputObj) of
+        (Just nodeSetJson, Just failedNodeNamesJson) ->
+            case (decode $ encode nodeSetJson, decode $ encode failedNodeNamesJson) of
+                (Just nodeSet, Just failedNodeNames) -> do
+                    let result = availableOutputsWithFailedNodes nodeSet failedNodeNames
+                    return $ object ["result" .= result]
+                _ -> return $ object ["error" .= ("Invalid data format" :: String)]
+        _ -> return $ object ["error" .= ("Missing required fields" :: String)]
+handleAvailableOutputsWithFailedNodes _ = return $ object ["error" .= ("Invalid input format" :: String)]
 
 -- Handle availableOutputs function
 handleAvailableOutputs :: Value -> IO Value
