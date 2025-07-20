@@ -282,7 +282,8 @@ available_outputs(NodeSet, AvailableOutputs) :-
 node_is_needed(Nodes, Node, DesiredOutputs, RequiredNodes, Needed) :-
     node_outputs(Node, NodeOutputs),
     (member(Output, NodeOutputs),
-     member(Output, DesiredOutputs) ->
+     member(DesiredOutput, DesiredOutputs),
+     agent_data_match(DesiredOutput, Output) ->
         Needed = true
     ;   % Check if any of this node's outputs are consumed by other required nodes
         findall(ConsumerNode,
