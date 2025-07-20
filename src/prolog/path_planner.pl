@@ -62,24 +62,20 @@ nodes_producing_output(Nodes, Output, ProducingNodes) :-
     ).
 
 % Find the most specific producer among multiple candidates
-find_most_specific_producer(_, DesiredOutput, Candidates, [BestProducer]) :-
-    find_most_specific_producer_recursive(Candidates, DesiredOutput, -1, none, BestProducer).
-
-% Recursively find the producer with the highest specificity score
-find_most_specific_producer_recursive([], _, _, BestProducer, BestProducer).
-find_most_specific_producer_recursive([Node|Rest], DesiredOutput, BestScore, BestProducer, FinalBestProducer) :-
-    node_outputs(Node, Outputs),
-    member(ProducedOutput, Outputs),
-    agent_data_match(DesiredOutput, ProducedOutput),
-    % Calculate specificity score for this node
-    agent_data_parameters(DesiredOutput, DesiredParams),
-    agent_data_parameters(ProducedOutput, ProducedParams),
-    calculate_specificity_score(DesiredParams, ProducedParams, Score),
-    % Update best if this score is higher
-    (Score > BestScore ->
-        find_most_specific_producer_recursive(Rest, DesiredOutput, Score, Node, FinalBestProducer)
-    ;   find_most_specific_producer_recursive(Rest, DesiredOutput, BestScore, BestProducer, FinalBestProducer)
-    ).
+find_most_specific_producer(Nodes, DesiredOutput, Candidates, [BestProducer]) :-
+    findall(Score-Node,
+        (member(Node, Candidates),
+         node_outputs(Node, Outputs),
+         member(ProducedOutput, Outputs),
+         agent_data_match(DesiredOutput, ProducedOutput),
+         % Calculate specificity score
+         agent_data_parameters(DesiredOutput, DesiredParams),
+         agent_data_parameters(ProducedOutput, ProducedParams),
+         calculate_specificity_score(DesiredParams, ProducedParams, Score)),
+        ScoredNodes),
+    % Sort by score (highest first) and take the first
+    sort(ScoredNodes, SortedScoredNodes),
+    reverse(SortedScoredNodes, [BestScore-BestProducer|_]).
 
 % Calculate a specificity score for parameter matching
 % Higher score means more specific match
