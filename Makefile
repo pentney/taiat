@@ -8,7 +8,7 @@ help:
 	@echo "  install        - Install taiat package"
 	@echo "  develop        - Install in development mode"
 	@echo "  test           - Run all tests"
-	@echo "  test-prolog    - Run Prolog-specific tests"
+	@echo "  test-prolog    - Run Prolog-specific tests (uses daemon approach)"
 	@echo "  build-prolog   - Compile Prolog files"
 	@echo "  clean          - Clean build artifacts"
 	@echo "  install-gprolog - Install gprolog (Ubuntu/Debian)"

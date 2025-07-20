@@ -10,6 +10,8 @@ import os
 import subprocess
 import tempfile
 import time
+import signal
+import atexit
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
@@ -20,8 +22,8 @@ class TaiatPathPlanner:
     """
     Taiat Path Planner that uses Prolog for optimal path planning.
 
-    This planner compiles the Prolog path planner once and reuses it for all queries,
-    providing efficient execution path determination.
+    This planner runs a single Prolog daemon process and communicates with it
+    via stdin/stdout for all queries, providing efficient execution path determination.
     """
 
     def __init__(self, prolog_script_path: Optional[str] = None, max_nodes: int = 1000):
@@ -40,6 +42,9 @@ class TaiatPathPlanner:
             self.prolog_script_path = prolog_script_path
 
         self.max_nodes = max_nodes
+        self.daemon_process = None
+        self.daemon_stdin = None
+        self.daemon_stdout = None
 
         # Verify that the Prolog script exists
         if not os.path.exists(self.prolog_script_path):
@@ -53,48 +58,59 @@ class TaiatPathPlanner:
         except (subprocess.CalledProcessError, FileNotFoundError):
             raise RuntimeError("GNU Prolog (gplc) is not available. Please install it.")
 
-        # Compile the path planner once
-        self._compile_path_planner()
+        # Start the Prolog daemon
+        self._start_daemon()
 
-    def _compile_path_planner(self):
-        """Compile the path planner once and store the executable path."""
-        print("Compiling Prolog path planner (one-time setup)...")
+    def _start_daemon(self):
+        """Start the Prolog daemon process."""
+        print("Starting Prolog path planner daemon...")
 
-        # Create a temporary directory for the compiled program
-        self.temp_dir = tempfile.mkdtemp(prefix="taiat_prolog_")
-        self.compiled_program = os.path.join(self.temp_dir, "path_planner.exe")
-
-        # Create a wrapper program that includes the path planner
+        # Create a wrapper program that runs as a daemon
         wrapper_program = f"""
 :- initialization(main).
 :- include('{self.prolog_script_path}').
 
-% This is a wrapper that will be compiled once
-% The actual queries will be passed as data
+% This is a daemon that reads queries from stdin and writes results to stdout
 main :-
+    % Set up signal handling for graceful shutdown
+    catch(
+        daemon_loop,
+        _,
+        halt
+    ).
+
+daemon_loop :-
     % Read the query data from stdin
     read(NodeSet),
     read(DesiredOutputs),
     % Execute the path planning
-    plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath),
-    % Output the result
-    write('EXECUTION_PATH:'), write(ExecutionPath), nl,
-    halt.
+    (plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath) ->
+        % Success - output the result
+        write('SUCCESS:'), write(ExecutionPath), nl,
+        flush_output
+    ;   % Failure - output empty result
+        write('FAILURE:'), nl,
+        flush_output
+    ),
+    % Continue listening for more queries
+    daemon_loop.
 """
 
         # Write the wrapper program
-        wrapper_path = os.path.join(self.temp_dir, "wrapper.pl")
+        self.temp_dir = tempfile.mkdtemp(prefix="taiat_prolog_daemon_")
+        wrapper_path = os.path.join(self.temp_dir, "daemon.pl")
         with open(wrapper_path, "w") as f:
             f.write(wrapper_program)
 
-        # Compile the wrapper program
+        # Compile the daemon
         start_time = time.time()
         
         # Set memory environment variables
         memory_env = {**os.environ, "GLOBALSZ": "1048576", "TRAILSZ": "524288"}
         
+        compiled_daemon = os.path.join(self.temp_dir, "daemon.exe")
         result = subprocess.run(
-            ["gplc", "-o", self.compiled_program, wrapper_path],
+            ["gplc", "-o", compiled_daemon, wrapper_path],
             capture_output=True,
             text=True,
             timeout=60,
@@ -104,14 +120,78 @@ main :-
 
         if result.returncode != 0:
             raise RuntimeError(
-                f"Failed to compile Prolog path planner: {result.stderr}"
+                f"Failed to compile Prolog daemon: {result.stderr}"
             )
 
-        print(f"Prolog path planner compiled successfully in {compilation_time:.3f}s")
-        print(f"Compiled program: {self.compiled_program}")
+        print(f"Prolog daemon compiled successfully in {compilation_time:.3f}s")
+
+        # Start the daemon process
+        exec_env = {**os.environ, "GLOBALSZ": "1048576", "TRAILSZ": "524288", "HEAPSZ": "1048576"}
+        
+        self.daemon_process = subprocess.Popen(
+            [compiled_daemon],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=exec_env,
+            bufsize=1,  # Line buffered
+        )
+
+        # Test the daemon with a simple query to ensure it's working
+        test_node_set = "agent_graph_node_set([])."
+        test_outputs = "[]."
+        
+        try:
+            self.daemon_process.stdin.write(f"{test_node_set}\n{test_outputs}\n")
+            self.daemon_process.stdin.flush()
+            
+            # Read response with timeout
+            import select
+            ready, _, _ = select.select([self.daemon_process.stdout], [], [], 5.0)
+            if ready:
+                response = self.daemon_process.stdout.readline().strip()
+                if response.startswith("SUCCESS:") or response.startswith("FAILURE:"):
+                    print("Prolog daemon started successfully")
+                else:
+                    raise RuntimeError(f"Unexpected daemon response: {response}")
+            else:
+                raise RuntimeError("Daemon did not respond within timeout")
+                
+        except Exception as e:
+            self._cleanup_daemon()
+            raise RuntimeError(f"Failed to start Prolog daemon: {e}")
 
         # Clean up wrapper file
         os.unlink(wrapper_path)
+
+    def _cleanup_daemon(self):
+        """Clean up the daemon process and temporary files."""
+        if self.daemon_process is not None:
+            try:
+                # Send SIGTERM to the daemon
+                self.daemon_process.terminate()
+                
+                # Wait for it to terminate gracefully
+                try:
+                    self.daemon_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # Force kill if it doesn't terminate gracefully
+                    self.daemon_process.kill()
+                    self.daemon_process.wait()
+                    
+            except Exception as e:
+                print(f"Warning: Error cleaning up daemon process: {e}")
+            finally:
+                self.daemon_process = None
+
+        # Clean up temporary directory
+        if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
+            try:
+                import shutil
+                shutil.rmtree(self.temp_dir)
+            except Exception as e:
+                print(f"Warning: Error cleaning up temporary directory: {e}")
 
     def _check_node_set_size(self, node_set: AgentGraphNodeSet) -> bool:
         """
@@ -220,7 +300,7 @@ main :-
         self, node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
     ) -> Optional[List[str]]:
         """
-        Plan the execution path using the pre-compiled Prolog program.
+        Plan the execution path using the Prolog daemon.
 
         Args:
             node_set: The AgentGraphNodeSet containing all available nodes
@@ -233,69 +313,62 @@ main :-
         if not self._check_node_set_size(node_set):
             return None
 
+        # Check if daemon is still running
+        if self.daemon_process is None or self.daemon_process.poll() is not None:
+            raise RuntimeError("Prolog daemon is not running")
+
         try:
             # Convert data to Prolog format
             node_set_str = self._node_set_to_prolog(node_set)
             outputs_str = self._desired_outputs_to_prolog(desired_outputs)
 
-            # Set memory environment variables for execution
-            exec_env = {**os.environ, "GLOBALSZ": "1048576", "TRAILSZ": "524288", "HEAPSZ": "1048576"}
+            # Send query to daemon
+            query = f"{node_set_str}.\n{outputs_str}.\n"
+            self.daemon_process.stdin.write(query)
+            self.daemon_process.stdin.flush()
 
-            # Run the compiled Prolog program
-            proc = subprocess.run(
-                [self.compiled_program],
-                input=f"{node_set_str}.\n{outputs_str}.\n",
-                capture_output=True,
-                text=True,
-                timeout=60,
-                env=exec_env,
-            )
+            # Read response with timeout
+            import select
+            ready, _, _ = select.select([self.daemon_process.stdout], [], [], 30.0)
+            if not ready:
+                raise RuntimeError("Daemon did not respond within timeout")
 
-            if proc.returncode != 0:
-                print(f"Prolog planner error: {proc.stderr}")
+            response = self.daemon_process.stdout.readline().strip()
+            
+            if response.startswith("SUCCESS:"):
+                result_str = response[len("SUCCESS:"):].strip()
+                # Parse the Prolog list of node names (quoted or unquoted)
+                import re
+
+                # Try quoted atoms first
+                node_pattern_quoted = r"'([^']+)'"
+                node_names = re.findall(node_pattern_quoted, result_str)
+                if not node_names:
+                    # Fallback: unquoted atoms (e.g., [data_loader,preprocessor,...])
+                    node_pattern_unquoted = r"([a-zA-Z0-9_]+)"
+                    node_names = re.findall(node_pattern_unquoted, result_str)
+                # Remove any matches that are not actual node names (e.g., 'ExecutionPath')
+                node_names = [
+                    n for n in node_names if n not in ("ExecutionPath", "[]")
+                ]
+                if node_names:
+                    return node_names
+                else:
+                    print(f"Could not parse execution path: {result_str}")
+                    return None
+            elif response.startswith("FAILURE:"):
+                return None
+            else:
+                print(f"Unexpected daemon response: {response}")
                 return None
 
-            # Parse the output
-            for line in proc.stdout.splitlines():
-                if line.startswith("EXECUTION_PATH:"):
-                    result_str = line[len("EXECUTION_PATH:") :].strip()
-                    # If the result is an empty list, treat as failure
-                    if result_str == "[]":
-                        return None
-                    # Parse the Prolog list of node names (quoted or unquoted)
-                    import re
-
-                    # Try quoted atoms first
-                    node_pattern_quoted = r"'([^']+)'"
-                    node_names = re.findall(node_pattern_quoted, result_str)
-                    if not node_names:
-                        # Fallback: unquoted atoms (e.g., [data_loader,preprocessor,...])
-                        node_pattern_unquoted = r"([a-zA-Z0-9_]+)"
-                        node_names = re.findall(node_pattern_unquoted, result_str)
-                    # Remove any matches that are not actual node names (e.g., 'ExecutionPath')
-                    node_names = [
-                        n for n in node_names if n not in ("ExecutionPath", "[]")
-                    ]
-                    if node_names:
-                        return node_names
-                    else:
-                        print(f"Could not parse execution path: {result_str}")
-                        return None
-            print("No execution path found in Prolog output")
-            return None
         except Exception as e:
-            print(f"Error in optimized Prolog planning: {e}")
+            print(f"Error in Prolog daemon planning: {e}")
             return None
 
     def __del__(self):
-        """Clean up temporary files when the object is destroyed."""
-        try:
-            if hasattr(self, "temp_dir") and os.path.exists(self.temp_dir):
-                import shutil
-
-                shutil.rmtree(self.temp_dir)
-        except Exception:
-            pass
+        """Clean up daemon process and temporary files when the object is destroyed."""
+        self._cleanup_daemon()
 
 
 def plan_taiat_path(
@@ -312,10 +385,13 @@ def plan_taiat_path(
         List of node names in execution order, or None if planning failed
     """
     planner = TaiatPathPlanner()
-    return planner.plan_path(node_set, desired_outputs)
+    try:
+        return planner.plan_path(node_set, desired_outputs)
+    finally:
+        planner._cleanup_daemon()
 
 
-# Global planner instance for reuse (avoids recompilation)
+# Global planner instance for reuse (avoids daemon restart)
 _global_planner = None
 
 
@@ -328,10 +404,10 @@ def get_global_planner() -> TaiatPathPlanner:
 
 
 def clear_global_planner():
-    """Clear the global planner cache to force recompilation."""
+    """Clear the global planner cache to force daemon restart."""
     global _global_planner
     if _global_planner is not None:
-        del _global_planner
+        _global_planner._cleanup_daemon()
         _global_planner = None
 
 
@@ -339,9 +415,9 @@ def plan_taiat_path_global(
     node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]
 ) -> Optional[List[str]]:
     """
-    Plan execution path using the global Prolog engine.
+    Plan execution path using the global Prolog daemon.
 
-    This reuses the same compiled executable across multiple calls,
+    This reuses the same daemon process across multiple calls,
     eliminating both compilation and process startup overhead.
 
     Args:
@@ -353,3 +429,7 @@ def plan_taiat_path_global(
     """
     planner = get_global_planner()
     return planner.plan_path(node_set, desired_outputs)
+
+
+# Register cleanup function to be called on exit
+atexit.register(clear_global_planner)
