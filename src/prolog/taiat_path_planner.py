@@ -24,13 +24,13 @@ class TaiatPathPlanner:
     providing efficient execution path determination.
     """
 
-    def __init__(self, prolog_script_path: Optional[str] = None, max_nodes: int = 200):
+    def __init__(self, prolog_script_path: Optional[str] = None, max_nodes: int = 1000):
         """
         Initialize the Taiat Path Planner.
 
         Args:
             prolog_script_path: Path to the Prolog script file. If None, uses default path.
-            max_nodes: Maximum number of nodes allowed in a node set (default: 200)
+            max_nodes: Maximum number of nodes allowed in a node set (default: 1000)
         """
         if prolog_script_path is None:
             # Use the default path relative to this file
@@ -89,12 +89,16 @@ main :-
 
         # Compile the wrapper program
         start_time = time.time()
+        
+        # Set memory environment variables
+        memory_env = {**os.environ, "GLOBALSZ": "1048576", "TRAILSZ": "524288"}
+        
         result = subprocess.run(
             ["gplc", "-o", self.compiled_program, wrapper_path],
             capture_output=True,
             text=True,
             timeout=60,
-            env={**os.environ, "GLOBALSZ": "65536", "TRAILSZ": "32768"},
+            env=memory_env,
         )
         compilation_time = time.time() - start_time
 
@@ -234,13 +238,17 @@ main :-
             node_set_str = self._node_set_to_prolog(node_set)
             outputs_str = self._desired_outputs_to_prolog(desired_outputs)
 
+            # Set memory environment variables for execution
+            exec_env = {**os.environ, "GLOBALSZ": "1048576", "TRAILSZ": "524288", "HEAPSZ": "1048576"}
+
             # Run the compiled Prolog program
             proc = subprocess.run(
                 [self.compiled_program],
                 input=f"{node_set_str}.\n{outputs_str}.\n",
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=60,
+                env=exec_env,
             )
 
             if proc.returncode != 0:
