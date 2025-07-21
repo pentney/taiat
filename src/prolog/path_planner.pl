@@ -335,7 +335,95 @@ filter_required_nodes(Nodes, DesiredOutputs, AllRequiredNodes, FilteredNodes) :-
          node_is_needed(Nodes, Node, DesiredOutputs, AllRequiredNodes, true)),
         FilteredNodes).
 
+% Plan alternative execution path excluding failed nodes
+% This predicate uses backtracking to find different valid paths when some nodes have failed
+plan_alternative_execution_path(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath) :-
+    agent_graph_node_set_nodes(NodeSet, Nodes),
+    filter_out_failed_nodes(Nodes, FailedNodeNames, AvailableNodes),
+    ( AvailableNodes = [] ->
+        write('DEBUG: All nodes failed, returning empty path'), nl, flush_output,
+        write('SUCCESS:[]'), nl, flush_output,
+        ExecutionPath = []
+    ;
+        AvailableNodeSet = agent_graph_node_set(AvailableNodes),
+        plan_execution_path(AvailableNodeSet, DesiredOutputs, ExecutionPath)
+    ).
 
+% Helper predicate to filter out failed nodes
+filter_out_failed_nodes([], _, []).
+filter_out_failed_nodes([Node|Rest], FailedNodeNames, [Node|FilteredRest]) :-
+    node_name(Node, NodeName),
+    \+ member(NodeName, FailedNodeNames),
+    filter_out_failed_nodes(Rest, FailedNodeNames, FilteredRest).
+filter_out_failed_nodes([Node|Rest], FailedNodeNames, FilteredRest) :-
+    node_name(Node, NodeName),
+    member(NodeName, FailedNodeNames),
+    filter_out_failed_nodes(Rest, FailedNodeNames, FilteredRest).
+
+% Plan multiple alternative paths with different strategies
+% This predicate finds all possible alternative paths by trying different combinations
+plan_multiple_alternative_paths(NodeSet, DesiredOutputs, FailedNodeNames, AlternativePaths) :-
+    % Extract nodes from node set
+    agent_graph_node_set_nodes(NodeSet, Nodes),
+    
+    % Filter out failed nodes
+    filter_out_failed_nodes(Nodes, FailedNodeNames, AvailableNodes),
+    
+    % Find all possible paths by trying different node combinations
+    findall(Path,
+        (plan_alternative_execution_path(NodeSet, DesiredOutputs, FailedNodeNames, Path),
+         Path \= []),
+        AlternativePaths).
+
+% Enhanced path planning that tries to find the best alternative when primary path fails
+% This predicate implements a more sophisticated backtracking strategy
+plan_execution_path_with_fallback(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath) :-
+    % First, try to plan without considering failed nodes
+    plan_alternative_execution_path(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath),
+    ExecutionPath \= [].
+    
+% If no path found, try with different strategies
+plan_execution_path_with_fallback(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath) :-
+    % Try to find any valid path by relaxing some constraints
+    find_any_valid_path(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath).
+
+% Find any valid path by relaxing constraints
+find_any_valid_path(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath) :-
+    % Extract nodes from node set
+    agent_graph_node_set_nodes(NodeSet, Nodes),
+    
+    % Try different combinations of available nodes
+    findall(Path,
+        (subset(SelectedNodes, Nodes),
+         filter_out_failed_nodes(SelectedNodes, FailedNodeNames, AvailableNodes),
+         AvailableNodes \= [],
+         AvailableNodeSet = agent_graph_node_set(AvailableNodes),
+         plan_execution_path(AvailableNodeSet, DesiredOutputs, Path),
+         Path \= []),
+        AllPaths),
+    
+    % Take the shortest path as the best alternative
+    (AllPaths = [] ->
+        ExecutionPath = []
+    ;   find_shortest_path(AllPaths, ExecutionPath)
+    ).
+
+% Helper predicate to find the shortest path from a list of paths
+find_shortest_path([Path], Path).
+find_shortest_path([Path1, Path2|Rest], ShortestPath) :-
+    length(Path1, Len1),
+    length(Path2, Len2),
+    (Len1 =< Len2 ->
+        find_shortest_path([Path1|Rest], ShortestPath)
+    ;   find_shortest_path([Path2|Rest], ShortestPath)
+    ).
+
+% Helper predicate for subset generation (backtracking through all possible subsets)
+subset([], []).
+subset([H|T], [H|S]) :-
+    subset(T, S).
+subset([_|T], S) :-
+    subset(T, S).
 
 % Validate that all inputs for a specific node can be satisfied by the selected nodes
 % Skip inputs that are not produced by any node in the graph (external inputs)

@@ -11,6 +11,7 @@ from pathlib import Path
 
 # Add the taiat package to the path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from taiat.base import AgentGraphNodeSet, AgentGraphNode, AgentData
 from prolog.taiat_path_planner import (
@@ -1120,6 +1121,67 @@ def test_direct_parameter_matching():
         assert False, "Path planning should fail when no suitable producer exists"
 
 
+def test_secondary_path_with_agent_failure():
+    """
+    Test that TaiatPathPlanner finds a secondary path when the primary path fails due to an agent failure.
+    """
+    from prolog.taiat_path_planner import TaiatPathPlanner
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+
+    # Path 1: A -> B -> OUT
+    # Path 2: X -> Y -> OUT
+    node_a = AgentGraphNode(
+        name="A",
+        description="Start A",
+        inputs=[],
+        outputs=[AgentData(name="mid", parameters={}, description="mid")],
+    )
+    node_b = AgentGraphNode(
+        name="B",
+        description="B",
+        inputs=[AgentData(name="mid", parameters={}, description="mid")],
+        outputs=[AgentData(name="OUT", parameters={}, description="out")],
+    )
+    node_x = AgentGraphNode(
+        name="X",
+        description="Start X",
+        inputs=[],
+        outputs=[AgentData(name="altmid", parameters={}, description="altmid")],
+    )
+    node_y = AgentGraphNode(
+        name="Y",
+        description="Y",
+        inputs=[AgentData(name="altmid", parameters={}, description="altmid")],
+        outputs=[AgentData(name="OUT", parameters={}, description="out")],
+    )
+    node_set = AgentGraphNodeSet(nodes=[node_a, node_b, node_x, node_y])
+    desired_outputs = [AgentData(name="OUT", parameters={}, description="out")]
+
+    planner = TaiatPathPlanner()
+    # Find the first path
+    path1 = planner.plan_path(node_set, desired_outputs)
+    assert path1 is not None and len(path1) > 0, "Should find a path"
+
+    # Determine which path was chosen first
+    if "A" in path1 and "B" in path1:
+        primary_nodes = {"A", "B"}
+        secondary_nodes = {"X", "Y"}
+    elif "X" in path1 and "Y" in path1:
+        primary_nodes = {"X", "Y"}
+        secondary_nodes = {"A", "B"}
+    else:
+        assert False, f"Unexpected path returned: {path1}"
+
+    # Simulate failure of the primary path (remove those nodes)
+    remaining_nodes = [n for n in [node_a, node_b, node_x, node_y] if n.name not in primary_nodes]
+    node_set_failed = AgentGraphNodeSet(nodes=remaining_nodes)
+    path2 = planner.plan_path(node_set_failed, desired_outputs)
+    assert path2 is not None and len(path2) > 0, "Should find a secondary path"
+    assert all(n in path2 for n in secondary_nodes), "Secondary path should use the alternative nodes"
+    assert all(n not in path2 for n in primary_nodes), "Secondary path should not use failed nodes"
+    print("test_secondary_path_with_agent_failure passed.")
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -1142,6 +1204,7 @@ def main():
     test_parameter_constraints_no_match()
     test_parameter_matching_debug()
     test_direct_parameter_matching()
+    test_secondary_path_with_agent_failure()
 
     print("\n" + "=" * 60)
     print("All tests completed!")
