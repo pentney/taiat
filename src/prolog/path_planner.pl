@@ -215,6 +215,9 @@ extract_node_names([], []).
 extract_node_names([node(Name, _, _, _)|T], [Name|NamesT]) :-
     extract_node_names(T, NamesT).
 
+% Helper predicate to extract node name from a single node
+node_name(node(Name, _, _, _), Name).
+
 % Main predicate: plan execution path
 plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath) :-
     % Extract nodes from node set
@@ -238,6 +241,94 @@ plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath) :-
 % Helper predicate to extract nodes from node set
 agent_graph_node_set_nodes(agent_graph_node_set(Nodes), Nodes).
 
+% Enhanced error reporting predicates
+
+% Generate error message when desired outputs cannot be produced
+generate_missing_outputs_error(Nodes, DesiredOutputs, ErrorMsg) :-
+    findall(MissingOutput,
+        (member(DesiredOutput, DesiredOutputs),
+         agent_data_name(DesiredOutput, OutputName),
+         nodes_producing_output_name(Nodes, OutputName, ProducingNodes),
+         ProducingNodes = []),
+        MissingOutputs),
+    (MissingOutputs = [] ->
+        % This shouldn't happen, but just in case
+        ErrorMsg = 'Unknown error: No execution path found'
+    ;
+        % Build simple error message
+        ErrorMsg = 'Cannot find execution path. Some requested outputs are not available.'
+    ).
+
+% Output missing details directly to help with debugging
+output_missing_details(Nodes, DesiredOutputs) :-
+    % Find missing desired outputs
+    findall(OutputName,
+        (member(DesiredOutput, DesiredOutputs),
+         agent_data_name(DesiredOutput, OutputName),
+         nodes_producing_output_name(Nodes, OutputName, ProducingNodes),
+         ProducingNodes = []),
+        MissingOutputs),
+    
+    % Find unfulfilled inputs by checking all nodes
+    findall(InputName-NodeName,
+        (member(Node, Nodes),
+         node_name(Node, NodeName),
+         node_inputs(Node, Inputs),
+         member(Input, Inputs),
+         agent_data_name(Input, InputName),
+         nodes_producing_output(Nodes, Input, ProducingNodes),
+         ProducingNodes = []),
+        UnfulfilledInputs),
+    
+    % Output missing outputs
+    (MissingOutputs = [] ->
+        write('No missing outputs detected. ')
+    ;
+        write('Missing outputs: '),
+        output_list(MissingOutputs),
+        write('. ')
+    ),
+    
+    % Output unfulfilled inputs
+    (UnfulfilledInputs = [] ->
+        write('No unfulfilled inputs detected.')
+    ;
+        write('Unfulfilled inputs: '),
+        output_input_list(UnfulfilledInputs),
+        write('.')
+    ),
+    nl.
+
+% Helper to output a list of items
+output_list([]).
+output_list([Item]):- write(Item).
+output_list([Item1, Item2|Rest]):-
+    write(Item1), write(', '), write(Item2),
+    output_list_rest(Rest).
+
+output_list_rest([]).
+output_list_rest([Item|Rest]):-
+    write(', '), write(Item), output_list_rest(Rest).
+
+% Helper to output a list of input-node pairs
+output_input_list([]).
+output_input_list([Input-Node]):- write(Input), write(' (needed by '), write(Node), write(')').
+output_input_list([Input1-Node1, Input2-Node2|Rest]):-
+    write(Input1), write(' (needed by '), write(Node1), write('), '),
+    write(Input2), write(' (needed by '), write(Node2), write(')'),
+    output_input_list_rest(Rest).
+
+output_input_list_rest([]).
+output_input_list_rest([Input-Node|Rest]):-
+    write(', '), write(Input), write(' (needed by '), write(Node), write(')'),
+    output_input_list_rest(Rest).
+
+% Simple error message formatting (placeholder for future enhancement)
+format_missing_outputs([], '').
+format_available_outputs([], '').
+format_desired_outputs([], '').
+format_parameters([], '').
+
 % Helper predicate to remove duplicates while preserving order
 remove_duplicates([], []).
 remove_duplicates([H|T], [H|T1]) :-
@@ -257,8 +348,7 @@ list_delete([H|T], X, [H|T1]) :-
 validate_outputs(NodeSet, DesiredOutputs, Valid) :-
     agent_graph_node_set_nodes(NodeSet, Nodes),
     (forall(member(Output, DesiredOutputs),
-            (agent_data_name(Output, OutputName),
-             nodes_producing_output_name(Nodes, OutputName, ProducingNodes),
+            (nodes_producing_output(Nodes, Output, ProducingNodes),
              ProducingNodes \= [])) ->
         Valid = true
     ;   Valid = false

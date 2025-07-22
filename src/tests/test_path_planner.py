@@ -1121,6 +1121,59 @@ def test_direct_parameter_matching():
         assert False, "Path planning should fail when no suitable producer exists"
 
 
+def test_missing_input_error_reporting():
+    """
+    Test that the enhanced error reporting correctly identifies missing inputs.
+    """
+    from prolog.taiat_path_planner import TaiatPathPlanner
+    from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+
+    # Create a simple test case where we can test the error analysis directly
+    # Create a node that needs an input that no one provides
+    problem_node = AgentGraphNode(
+        name="problem_node",
+        description="Needs missing input",
+        inputs=[
+            AgentData(
+                name="missing_input",
+                parameters={},
+                description="Input that no one provides",
+                data=None,
+            )
+        ],
+        outputs=[
+            AgentData(
+                name="problem_output",
+                parameters={},
+                description="Problem output",
+                data=None,
+            )
+        ],
+    )
+    
+    node_set = AgentGraphNodeSet(nodes=[problem_node])
+    
+    # Request the problem output
+    desired_outputs = [
+        AgentData(
+            name="problem_output",
+            parameters={},
+            description="Problem output",
+            data=None,
+        )
+    ]
+    
+    # Test the error analysis directly
+    planner = TaiatPathPlanner()
+    error_details = planner._analyze_failure(node_set, desired_outputs)
+    
+    # Verify that the error analysis correctly identifies the missing input
+    assert "missing_input" in error_details, "Error analysis should mention the missing input"
+    assert "problem_node" in error_details, "Error analysis should mention which node needs the input"
+    
+    print("✅ Missing input error reporting test passed")
+
+
 def test_secondary_path_with_agent_failure():
     """
     Test that TaiatPathPlanner finds a secondary path when the primary path fails due to an agent failure.
@@ -1204,6 +1257,7 @@ def main():
     test_parameter_constraints_no_match()
     test_parameter_matching_debug()
     test_direct_parameter_matching()
+    test_missing_input_error_reporting()
     test_secondary_path_with_agent_failure()
 
     print("\n" + "=" * 60)

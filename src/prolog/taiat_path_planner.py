@@ -151,7 +151,7 @@ daemon_loop :-
             ready, _, _ = select.select([self.daemon_process.stdout], [], [], 5.0)
             if ready:
                 response = self.daemon_process.stdout.readline().strip()
-                if response.startswith("SUCCESS:") or response.startswith("FAILURE:"):
+                if response.startswith("SUCCESS:") or response.startswith("FAILURE:") or response.startswith("ERROR:"):
                     print("Prolog daemon started successfully")
                 else:
                     raise RuntimeError(f"Unexpected daemon response: {response}")
@@ -192,6 +192,65 @@ daemon_loop :-
                 shutil.rmtree(self.temp_dir)
             except Exception as e:
                 print(f"Warning: Error cleaning up temporary directory: {e}")
+
+    def _analyze_failure(self, node_set: AgentGraphNodeSet, desired_outputs: List[AgentData]) -> str:
+        """Analyze why path planning failed and provide detailed error information."""
+        try:
+            # Find missing desired outputs
+            missing_outputs = []
+            for desired_output in desired_outputs:
+                # Check if any node produces this output
+                found = False
+                for node in node_set.nodes:
+                    for output in node.outputs:
+                        if output.name == desired_output.name:
+                            # Check if parameters match
+                            if self._parameters_match(desired_output.parameters, output.parameters):
+                                found = True
+                                break
+                    if found:
+                        break
+                if not found:
+                    missing_outputs.append(desired_output.name)
+            
+            # Find unfulfilled inputs
+            unfulfilled_inputs = []
+            for node in node_set.nodes:
+                for input_data in node.inputs:
+                    # Check if any node produces this input
+                    found = False
+                    for producer_node in node_set.nodes:
+                        for output in producer_node.outputs:
+                            if output.name == input_data.name:
+                                # Check if parameters match
+                                if self._parameters_match(input_data.parameters, output.parameters):
+                                    found = True
+                                    break
+                        if found:
+                            break
+                    if not found:
+                        unfulfilled_inputs.append(f"{input_data.name} (needed by {node.name})")
+            
+            # Build error message
+            error_parts = []
+            if missing_outputs:
+                error_parts.append(f"Missing outputs: {', '.join(missing_outputs)}")
+            if unfulfilled_inputs:
+                error_parts.append(f"Unfulfilled inputs: {', '.join(unfulfilled_inputs)}")
+            
+            if error_parts:
+                return ". ".join(error_parts)
+            else:
+                return "No execution path found"
+        except:
+            return "No execution path found"
+    
+    def _parameters_match(self, required_params: dict, available_params: dict) -> bool:
+        """Check if required parameters are a subset of available parameters."""
+        for key, value in required_params.items():
+            if key not in available_params or available_params[key] != value:
+                return False
+        return True
 
     def _check_node_set_size(self, node_set: AgentGraphNodeSet) -> bool:
         """
@@ -357,6 +416,17 @@ daemon_loop :-
                     print(f"Could not parse execution path: {result_str}")
                     return None
             elif response.startswith("FAILURE:"):
+                # Analyze the failure and provide detailed error information
+                error_details = self._analyze_failure(node_set, desired_outputs)
+                if error_details:
+                    print(f"Path planning failed: {error_details}")
+                else:
+                    # Provide basic error details when no specific error is given
+                    print("Path planning failed: No execution path found")
+                    print("This usually means:")
+                    print("  - Requested outputs are not available in the agent graph")
+                    print("  - Required dependencies cannot be satisfied")
+                    print("  - Parameter constraints cannot be met")
                 return None
             else:
                 print(f"Unexpected daemon response: {response}")
