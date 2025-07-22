@@ -241,23 +241,7 @@ plan_execution_path(NodeSet, DesiredOutputs, ExecutionPath) :-
 % Helper predicate to extract nodes from node set
 agent_graph_node_set_nodes(agent_graph_node_set(Nodes), Nodes).
 
-% Enhanced error reporting predicates
 
-% Generate error message when desired outputs cannot be produced
-generate_missing_outputs_error(Nodes, DesiredOutputs, ErrorMsg) :-
-    findall(MissingOutput,
-        (member(DesiredOutput, DesiredOutputs),
-         agent_data_name(DesiredOutput, OutputName),
-         nodes_producing_output_name(Nodes, OutputName, ProducingNodes),
-         ProducingNodes = []),
-        MissingOutputs),
-    (MissingOutputs = [] ->
-        % This shouldn't happen, but just in case
-        ErrorMsg = 'Unknown error: No execution path found'
-    ;
-        % Build simple error message
-        ErrorMsg = 'Cannot find execution path. Some requested outputs are not available.'
-    ).
 
 % Output missing details directly to help with debugging
 output_missing_details(Nodes, DesiredOutputs) :-
@@ -323,11 +307,7 @@ output_input_list_rest([Input-Node|Rest]):-
     write(', '), write(Input), write(' (needed by '), write(Node), write(')'),
     output_input_list_rest(Rest).
 
-% Simple error message formatting (placeholder for future enhancement)
-format_missing_outputs([], '').
-format_available_outputs([], '').
-format_desired_outputs([], '').
-format_parameters([], '').
+
 
 % Helper predicate to remove duplicates while preserving order
 remove_duplicates([], []).
@@ -344,25 +324,7 @@ list_delete([H|T], X, [H|T1]) :-
     H \= X,
     list_delete(T, X, T1).
 
-% Predicate to validate that all desired outputs can be produced
-validate_outputs(NodeSet, DesiredOutputs, Valid) :-
-    agent_graph_node_set_nodes(NodeSet, Nodes),
-    (forall(member(Output, DesiredOutputs),
-            (nodes_producing_output(Nodes, Output, ProducingNodes),
-             ProducingNodes \= [])) ->
-        Valid = true
-    ;   Valid = false
-    ).
 
-% Predicate to find all outputs that can be produced by the node set
-available_outputs(NodeSet, AvailableOutputs) :-
-    agent_graph_node_set_nodes(NodeSet, Nodes),
-    findall(Output,
-        (member(Node, Nodes),
-         node_outputs(Node, Outputs),
-         member(Output, Outputs)),
-        AllOutputs),
-    remove_duplicates(AllOutputs, AvailableOutputs).
 
  
 
@@ -425,137 +387,7 @@ filter_required_nodes(Nodes, DesiredOutputs, AllRequiredNodes, FilteredNodes) :-
          node_is_needed(Nodes, Node, DesiredOutputs, AllRequiredNodes, true)),
         FilteredNodes).
 
-% Plan alternative execution path excluding failed nodes
-% This predicate uses backtracking to find different valid paths when some nodes have failed
-plan_alternative_execution_path(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath) :-
-    agent_graph_node_set_nodes(NodeSet, Nodes),
-    filter_out_failed_nodes(Nodes, FailedNodeNames, AvailableNodes),
-    ( AvailableNodes = [] ->
-        write('DEBUG: All nodes failed, returning empty path'), nl, flush_output,
-        write('SUCCESS:[]'), nl, flush_output,
-        ExecutionPath = []
-    ;
-        AvailableNodeSet = agent_graph_node_set(AvailableNodes),
-        plan_execution_path(AvailableNodeSet, DesiredOutputs, ExecutionPath)
-    ).
 
-% Helper predicate to filter out failed nodes
-filter_out_failed_nodes([], _, []).
-filter_out_failed_nodes([Node|Rest], FailedNodeNames, [Node|FilteredRest]) :-
-    node_name(Node, NodeName),
-    \+ member(NodeName, FailedNodeNames),
-    filter_out_failed_nodes(Rest, FailedNodeNames, FilteredRest).
-filter_out_failed_nodes([Node|Rest], FailedNodeNames, FilteredRest) :-
-    node_name(Node, NodeName),
-    member(NodeName, FailedNodeNames),
-    filter_out_failed_nodes(Rest, FailedNodeNames, FilteredRest).
-
-% Plan multiple alternative paths with different strategies
-% This predicate finds all possible alternative paths by trying different combinations
-plan_multiple_alternative_paths(NodeSet, DesiredOutputs, FailedNodeNames, AlternativePaths) :-
-    % Extract nodes from node set
-    agent_graph_node_set_nodes(NodeSet, Nodes),
-    
-    % Filter out failed nodes
-    filter_out_failed_nodes(Nodes, FailedNodeNames, AvailableNodes),
-    
-    % Find all possible paths by trying different node combinations
-    findall(Path,
-        (plan_alternative_execution_path(NodeSet, DesiredOutputs, FailedNodeNames, Path),
-         Path \= []),
-        AlternativePaths).
-
-% Enhanced path planning that tries to find the best alternative when primary path fails
-% This predicate implements a more sophisticated backtracking strategy
-plan_execution_path_with_fallback(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath) :-
-    % First, try to plan without considering failed nodes
-    plan_alternative_execution_path(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath),
-    ExecutionPath \= [].
-    
-% If no path found, try with different strategies
-plan_execution_path_with_fallback(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath) :-
-    % Try to find any valid path by relaxing some constraints
-    find_any_valid_path(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath).
-
-% Find any valid path by relaxing constraints
-find_any_valid_path(NodeSet, DesiredOutputs, FailedNodeNames, ExecutionPath) :-
-    % Extract nodes from node set
-    agent_graph_node_set_nodes(NodeSet, Nodes),
-    
-    % Try different combinations of available nodes
-    findall(Path,
-        (subset(SelectedNodes, Nodes),
-         filter_out_failed_nodes(SelectedNodes, FailedNodeNames, AvailableNodes),
-         AvailableNodes \= [],
-         AvailableNodeSet = agent_graph_node_set(AvailableNodes),
-         plan_execution_path(AvailableNodeSet, DesiredOutputs, Path),
-         Path \= []),
-        AllPaths),
-    
-    % Take the shortest path as the best alternative
-    (AllPaths = [] ->
-        ExecutionPath = []
-    ;   find_shortest_path(AllPaths, ExecutionPath)
-    ).
-
-% Helper predicate to find the shortest path from a list of paths
-find_shortest_path([Path], Path).
-find_shortest_path([Path1, Path2|Rest], ShortestPath) :-
-    length(Path1, Len1),
-    length(Path2, Len2),
-    (Len1 =< Len2 ->
-        find_shortest_path([Path1|Rest], ShortestPath)
-    ;   find_shortest_path([Path2|Rest], ShortestPath)
-    ).
-
-% Helper predicate for subset generation (backtracking through all possible subsets)
-subset([], []).
-subset([H|T], [H|S]) :-
-    subset(T, S).
-subset([_|T], S) :-
-    subset(T, S).
-
-% Validate that all inputs for a specific node can be satisfied by the selected nodes
-% Skip inputs that are not produced by any node in the graph (external inputs)
-validate_node_inputs_from_selected(Nodes, SelectedNodes, Node) :-
-    node_inputs(Node, Inputs),
-    forall(member(Input, Inputs),
-           (nodes_producing_output(Nodes, Input, ProducingNodes),
-            (ProducingNodes = [] ->
-                % This input is not produced by any node, so it's an external input
-                % We don't need to validate it
-                true
-            ;   % This input is produced by some nodes, so validate it's satisfied
-                % Check if any of the selected nodes can produce this input with matching parameters
-                findall(ProducerNode,
-                    (member(ProducerNode, SelectedNodes),
-                     ProducerNode \= Node,
-                     node_outputs(ProducerNode, Outputs),
-                     member(ProducedOutput, Outputs),
-                     agent_data_match(Input, ProducedOutput)),
-                    ValidProducers),
-                (ValidProducers = [] ->
-                    % No selected node can produce this input with matching parameters
-                    % Check if there are any nodes that could produce this input (even with wrong parameters)
-                    findall(PotentialProducer,
-                        (member(PotentialProducer, Nodes),
-                         PotentialProducer \= Node,
-                         node_outputs(PotentialProducer, Outputs),
-                         member(ProducedOutput, Outputs),
-                         agent_data_name(Input, InputName),
-                         agent_data_name(ProducedOutput, InputName)),
-                        PotentialProducers),
-                    (PotentialProducers = [] ->
-                        % No node at all can produce this input, so it's truly external
-                        true
-                    ;   % Some nodes can produce this input but with wrong parameters
-                        % This should cause validation to fail
-                        fail
-                    )
-                ;   % At least one selected node can produce this input
-                    true
-                )
-            ))).
 
 
 
