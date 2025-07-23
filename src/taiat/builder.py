@@ -48,6 +48,7 @@ class TaiatBuilder:
         llm: BaseChatModel,
         verbose: bool = False,
         add_metrics: bool = True,
+        agent_registry=None,
         use_prolog_planning: bool = True,
         fallback_to_original: bool = True,
     ):
@@ -57,6 +58,7 @@ class TaiatBuilder:
         self.data_dependence = defaultdict(dict)
         self.verbose = verbose
         self.add_metrics = add_metrics
+        self.agent_registry = agent_registry
         self.use_prolog_planning = use_prolog_planning
         self.fallback_to_original = fallback_to_original
 
@@ -497,7 +499,6 @@ class TaiatBuilder:
                     )
 
         return dot.source
-
 
 def create_builder(
     llm: BaseChatModel,
