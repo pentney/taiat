@@ -7,7 +7,6 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from taiat.base import (
     State,
     FrozenAgentData,
-    AgentGraphNodeSet,
     TaiatQuery,
     AgentData,
     OutputMatcher,
@@ -74,7 +73,10 @@ class TaiatEngine:
             return state
 
         # Get planned execution path from builder
-        if not hasattr(self.builder, "planned_execution_path") or not self.builder.planned_execution_path:
+        if (
+            not hasattr(self.builder, "planned_execution_path")
+            or not self.builder.planned_execution_path
+        ):
             query.status = "error"
             query.error = "No execution path available"
             return state
@@ -82,7 +84,9 @@ class TaiatEngine:
         # Get nodes in planned execution order
         planned_nodes = []
         for node_name in self.builder.planned_execution_path:
-            node = next((n for n in self.builder.node_set.nodes if n.name == node_name), None)
+            node = next(
+                (n for n in self.builder.node_set.nodes if n.name == node_name), None
+            )
             if node:
                 planned_nodes.append(node)
 
@@ -93,7 +97,7 @@ class TaiatEngine:
 
         # Execute using custom executor
         state = executor.execute(planned_nodes, state, self.goal_outputs)
-        
+
         # Create visualization if requested (after path is set)
         visualization = None
         if query.visualize_graph:
