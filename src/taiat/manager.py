@@ -12,7 +12,7 @@ from taiat.builder import AgentGraphNode, AgentGraphNodeSet, State
 from taiat.metrics import TaiatMetrics
 from threading import RLock
 import time
-from langgraph.graph import START
+
 
 # Import the global optimized Prolog path planner
 from prolog.taiat_path_planner import plan_taiat_path_global
@@ -80,7 +80,7 @@ class TaiatManager:
 
         # Initialize status tracking
         self.output_status = {k.name: "pending" for k in self.node_set.nodes}
-        self.output_status[START] = "running"
+        self.output_status[START_NODE.name] = "running"
         self.output_status[TAIAT_TERMINAL_NODE] = "pending"
 
         # Execution path from global optimized Prolog planner
