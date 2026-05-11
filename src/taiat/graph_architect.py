@@ -149,7 +149,7 @@ class TaiatGraphArchitect:
         Returns:
             Formatted prompt for the LLM
         """
-        template = _JINJA_ENV.get_template("generate_nodes.jinja")
+        template = _JINJA_ENV.get_template("generate_nodes.j2")
         return template.render(
             description=description,
             available_functions=self.agent_registry.list_registered(),

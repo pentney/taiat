@@ -1,0 +1,20 @@
+You are tasked with creating an agent graph from a description.
+
+Available functions in the registry:
+{% if available_functions %}
+{{ available_functions | join(", ") }}
+{% else %}
+No functions registered
+{% endif %}
+
+User description: {{ description }}
+
+Please generate AgentGraphNode specifications that use the available functions.
+Each node should have:
+- name: descriptive name
+- description: what the node does
+- function: name of a function from the registry
+- inputs: list of AgentData objects
+- outputs: list of AgentData objects
+
+Return the specifications in a structured format that can be parsed.

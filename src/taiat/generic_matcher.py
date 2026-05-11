@@ -1,8 +1,18 @@
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from taiat.base import OutputMatcher, AgentData
+from taiat.base import AgentData, OutputMatcher
 
 UNKNOWN_OUTPUT = "<taiat_unknown_output>"
+
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+_JINJA_ENV = Environment(
+    loader=FileSystemLoader(_TEMPLATES_DIR),
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
 
 
 class UnknownOutputException(Exception):
@@ -18,35 +28,6 @@ class GenericMatcher(OutputMatcher):
     A generic matcher that can be used to match any output, if perhaps suboptimally.
     Specialized output matchers should be used for more precise matching.
     """
-
-    generic_output_matcher_prompt = """
-You are given a list of possible desired outputs.
-The request is a description of a task to perform.
-The outputs are a list of outputs that can be used to solve the request.
-The outputs have a name.
-Some of the outputs may have a description.
-Some of the outputs may have <output_parameters> that can be used to solve the request.
-The <output_parameters> are given in the format <parameter_name1>:<parameter_value1> <parameter_name2>:<parameter_value2> ...
-The outputs are given in the following format:
-<output_name> | <output_parameters> | <output_description>
-If the <output_parameters> are relevant to this request, you need to give the <output_parameters> as well.
-Do NOT give the <output_parameters> if they are not relevant to the request.
-You need to select the most relevant outputs and a relevant dataset for the request.
-
-Return the outputs that are most relevant to the request, each on a new line.
-Give the <output_name> and <output_parameters> in the following format:
-<output_name> <parameter_name1>:<parameter_value1> <parameter_name2>:<parameter_value2> ...
-Do not return the <output_description>.
-Return nothing else.
-If you cannot find any relevant parameters, return the special token {unknown_output}.
-
-Outputs:
-{outputs}
-
-Request:
-{request}
-
-"""
 
     def __init__(self, llm: BaseChatModel, outputs: list[AgentData | dict]):
         """
@@ -68,7 +49,8 @@ Request:
         """
         Get the outputs that match the request.
         """
-        prompt = self.generic_output_matcher_prompt.format(
+        template = _JINJA_ENV.get_template("generic_output_matcher.j2")
+        prompt = template.render(
             request=query,
             outputs="\n".join(self.output_names),
             unknown_output=UNKNOWN_OUTPUT,
