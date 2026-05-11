@@ -166,6 +166,7 @@ if __name__ == "__main__":
         package_dir={"": "src"},
         include_package_data=True,
         package_data={
+            "taiat": ["templates/*.jinja"],
             "taiat.prolog": ["*.pl", "compiled/*"],
         },
     )

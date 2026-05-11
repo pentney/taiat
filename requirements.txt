@@ -1,3 +1,4 @@
+Jinja2>=3.0.0
 ipython>=8.34.0
 kaggle>=1.5.11
 langsmith>=0.3.15

@@ -1,7 +1,17 @@
-from typing import Callable, Optional, List, Union
+from pathlib import Path
+from typing import Callable, List, Optional
+
+from jinja2 import Environment, FileSystemLoader
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from taiat.base import AgentGraphNode, AgentGraphNodeSet, AgentData
+from taiat.base import AgentData, AgentGraphNode, AgentGraphNodeSet
+
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+_JINJA_ENV = Environment(
+    loader=FileSystemLoader(_TEMPLATES_DIR),
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
 
 
 class AgentRegistry:
@@ -139,27 +149,11 @@ class TaiatGraphArchitect:
         Returns:
             Formatted prompt for the LLM
         """
-        available_functions = self.agent_registry.list_registered()
-
-        prompt = f"""
-You are tasked with creating an agent graph from a description. 
-
-Available functions in the registry:
-{", ".join(available_functions) if available_functions else "No functions registered"}
-
-User description: {description}
-
-Please generate AgentGraphNode specifications that use the available functions.
-Each node should have:
-- name: descriptive name
-- description: what the node does
-- function: name of a function from the registry
-- inputs: list of AgentData objects
-- outputs: list of AgentData objects
-
-Return the specifications in a structured format that can be parsed.
-"""
-        return prompt
+        template = _JINJA_ENV.get_template("generate_nodes.jinja")
+        return template.render(
+            description=description,
+            available_functions=self.agent_registry.list_registered(),
+        )
 
     def _parse_llm_response(
         self, response: str, description: str
