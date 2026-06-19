@@ -88,7 +88,6 @@ class TaiatBuilder:
         self,
         node_set: AgentGraphNodeSet | list[dict],
         inputs: list[AgentData],
-        terminal_nodes: list[str],
         add_metrics: bool = True,
     ) -> None:
         """

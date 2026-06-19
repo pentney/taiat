@@ -1,20 +1,43 @@
-You are tasked with creating an agent graph from a description.
+You are building an agent graph from a user description.
 
-Available functions in the registry:
+Available functions:
 {% if available_functions %}
-{{ available_functions | join(", ") }}
+{% for fn in available_functions %}
+- {{ fn }}
+{% endfor %}
 {% else %}
-No functions registered
+(none registered)
 {% endif %}
 
 User description: {{ description }}
 
-Please generate AgentGraphNode specifications that use the available functions.
-Each node should have:
-- name: descriptive name
-- description: what the node does
-- function: name of a function from the registry
-- inputs: list of AgentData objects
-- outputs: list of AgentData objects
+Return a JSON array of AgentGraphNode objects. Each object must follow this schema:
 
-Return the specifications in a structured format that can be parsed.
+[
+  {
+    "name": "<descriptive node name>",
+    "description": "<what this node does>",
+    "function": "<must be one of the available functions listed above>",
+    "inputs": [
+      {
+        "name": "<data identifier>",
+        "description": "<what this input represents>",
+        "parameters": {}
+      }
+    ],
+    "outputs": [
+      {
+        "name": "<data identifier>",
+        "description": "<what this output represents>",
+        "parameters": {}
+      }
+    ]
+  }
+]
+
+Rules:
+- "function" must exactly match one of the available function names.
+- Output "name" values in one node should match input "name" values in downstream nodes.
+- "parameters" may be an empty object if no configuration is needed.
+
+Return only the JSON array, no other text.

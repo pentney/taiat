@@ -35,7 +35,6 @@ class TestGraph(unittest.TestCase):
         builder.build(
             node_set=node_set,
             inputs=[AgentData(name="dataset", parameters={})],
-            terminal_nodes=["four_summary"],
         )
         return builder
 

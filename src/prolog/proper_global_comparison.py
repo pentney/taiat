@@ -149,9 +149,7 @@ def test_original_taiat_builder(
             start_time = time.time()
 
             builder = TaiatBuilder(llm=DummyLLM())
-            builder.build(
-                node_set, inputs=input_agent_data, terminal_nodes=terminal_node_names
-            )
+            builder.build(node_set, inputs=input_agent_data)
             query = TaiatQuery(query="Performance test query")
             graph, status, error = builder.get_plan(query, desired_outputs)
 

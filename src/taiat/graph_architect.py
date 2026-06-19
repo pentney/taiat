@@ -1,10 +1,21 @@
+import json
+import re
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 from jinja2 import Environment, FileSystemLoader
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from taiat.base import AgentData, AgentGraphNode, AgentGraphNodeSet
+
+
+def _extract_json(text: str) -> Any:
+    """Parse JSON from a response that may be wrapped in a markdown code fence."""
+    text = text.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if match:
+        text = match.group(1).strip()
+    return json.loads(text)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _JINJA_ENV = Environment(
@@ -137,7 +148,7 @@ class TaiatGraphArchitect:
         # Parse the response to extract node specifications
         # For now, we'll create a simple mock implementation
         # In a real implementation, this would parse the LLM response
-        return self._parse_llm_response(response.content, description)
+        return self._parse_llm_response(response.content)
 
     def _create_generation_prompt(self, description: str) -> str:
         """
@@ -155,75 +166,34 @@ class TaiatGraphArchitect:
             available_functions=self.agent_registry.list_registered(),
         )
 
-    def _parse_llm_response(
-        self, response: str, description: str
-    ) -> List[AgentGraphNode]:
+    def _parse_llm_response(self, response: str) -> List[AgentGraphNode]:
         """
-        Parse the LLM response to extract node specifications.
+        Parse the JSON array of node specs returned by the LLM.
 
         Args:
-            response: The LLM response
-            description: Original description for context
+            response: The LLM response (JSON array, optionally in a markdown fence)
 
         Returns:
-            List of AgentGraphNode objects
+            List of AgentGraphNode objects with function names as strings
         """
-        # This is a simplified implementation
-        # In a real implementation, this would parse structured output from the LLM
+        try:
+            items = _extract_json(response)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"LLM returned non-JSON response: {exc}\n\n{response}") from exc
 
-        # For now, create some example nodes based on the description
-        # This is a placeholder implementation
         nodes = []
-
-        # Simple heuristic: if description mentions "process", "analyze", "report"
-        # create corresponding nodes
-        if "process" in description.lower():
+        for item in items:
+            inputs = [AgentData(**i) for i in item.get("inputs", [])]
+            outputs = [AgentData(**o) for o in item.get("outputs", [])]
             nodes.append(
                 AgentGraphNode(
-                    name="data_processor",
-                    description="Processes raw data",
-                    function="data_processor",
-                    inputs=[AgentData(name="raw_data", description="Raw input data")],
-                    outputs=[
-                        AgentData(name="processed_data", description="Processed data")
-                    ],
+                    name=item["name"],
+                    description=item.get("description"),
+                    function=item.get("function"),
+                    inputs=inputs,
+                    outputs=outputs,
                 )
             )
-
-        if "analyze" in description.lower():
-            nodes.append(
-                AgentGraphNode(
-                    name="data_analyzer",
-                    description="Analyzes processed data",
-                    function="analyzer",
-                    inputs=[
-                        AgentData(name="processed_data", description="Processed data")
-                    ],
-                    outputs=[
-                        AgentData(
-                            name="analysis_result", description="Analysis results"
-                        )
-                    ],
-                )
-            )
-
-        if "report" in description.lower():
-            nodes.append(
-                AgentGraphNode(
-                    name="report_generator",
-                    description="Generates final report",
-                    function="report_generator",
-                    inputs=[
-                        AgentData(
-                            name="analysis_result", description="Analysis results"
-                        )
-                    ],
-                    outputs=[
-                        AgentData(name="final_report", description="Final report")
-                    ],
-                )
-            )
-
         return nodes
 
     def _resolve_function_names(

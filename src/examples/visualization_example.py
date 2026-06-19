@@ -50,7 +50,6 @@ def main():
         inputs=[
             AgentData(name="dataset_name", parameters={}, data=matcher.get_dataset())
         ],
-        terminal_nodes=["results_analysis"],
     )
 
     print("dataset", matcher.get_dataset())

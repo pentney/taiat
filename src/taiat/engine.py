@@ -9,6 +9,7 @@ from taiat.base import (
     FrozenAgentData,
     TaiatQuery,
     AgentData,
+    AgentGraphNodeSet,
     OutputMatcher,
     TAIAT_TERMINAL_NODE,
 )
@@ -37,6 +38,61 @@ class TaiatEngine:
             self.output_matcher = GenericMatcher(llm, outputs)
         else:
             self.output_matcher = output_matcher
+
+    @classmethod
+    def from_node_set(
+        cls,
+        node_set: AgentGraphNodeSet,
+        llm: BaseChatModel,
+        initial_inputs: list[AgentData] | None = None,
+        output_matcher: OutputMatcher | None = None,
+        verbose: bool = False,
+    ) -> "TaiatEngine":
+        """
+        Build an engine from an existing AgentGraphNodeSet.
+
+        Initial inputs (data available before any node runs) are inferred as any
+        AgentData name that appears in a node's inputs but is not produced as an
+        output by any node. Pass ``initial_inputs`` explicitly to override.
+        """
+        if initial_inputs is None:
+            produced = {out.name for node in node_set.nodes for out in node.outputs}
+            seen: set[str] = set()
+            initial_inputs = []
+            for node in node_set.nodes:
+                for inp in node.inputs:
+                    if inp.name not in produced and inp.name not in seen:
+                        seen.add(inp.name)
+                        initial_inputs.append(inp)
+
+        builder = TaiatBuilder(llm=llm, verbose=verbose)
+        builder.build(node_set=node_set, inputs=initial_inputs)
+        return cls(llm=llm, builder=builder, output_matcher=output_matcher)
+
+    @classmethod
+    def from_description(
+        cls,
+        description: str,
+        llm: BaseChatModel,
+        agent_registry: "AgentRegistry",
+        output_matcher: OutputMatcher | None = None,
+        verbose: bool = False,
+    ) -> "TaiatEngine":
+        """
+        Build an engine from a plain-English workflow description.
+
+        Calls TaiatGraphArchitect to generate the node set, then delegates to
+        ``from_node_set`` to wire up the builder and infer initial inputs.
+        """
+        from taiat.graph_architect import AgentRegistry, TaiatGraphArchitect
+
+        architect = TaiatGraphArchitect(
+            llm=llm, agent_registry=agent_registry, verbose=verbose
+        )
+        node_set = architect.build(description)
+        return cls.from_node_set(
+            node_set, llm, output_matcher=output_matcher, verbose=verbose
+        )
 
     def get_plan(
         self, goal_outputs: list[AgentData], query: TaiatQuery, verbose: bool = False
